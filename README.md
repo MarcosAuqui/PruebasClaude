@@ -1,18 +1,29 @@
 # Traductor de Pantalla
 
 App de escritorio (Windows / macOS / Linux) que traduce en tiempo real el texto
-que queda dentro de un recuadro casi transparente que colocas en cualquier parte
-de la pantalla.
+que queda dentro de uno o varios recuadros casi transparentes en pantalla.
 
-- Ventana principal vertical **9:16** con la paleta *Lunar Slate*
-  (`#0B0D10` `#171C22` `#2A333D` `#5D6F82` `#E7EEF5`).
-- **Un solo botón**: *Iniciar traducción* / *Finalizar traducción*
-  (atajo global `Ctrl/Cmd + Shift + T`).
-- Detección automática del idioma de origen.
-- Subtítulo opcional bajo el recuadro.
-- Pestaña **Guía de uso** dentro de la app.
+## Funciones
 
-## Cómo ejecutarla
+- **Traducción sobre el texto**: tapa el original con la traducción usando sus
+  mismos colores de fondo y de letra (estilo cámara de traductor). También
+  puede mostrarse como subtítulo bajo el recuadro o solo en la ventana.
+- **Varios recuadros** (hasta 6), cada uno con sus idiomas y su modo.
+- **Detección automática de alfabeto**: latino, cirílico, japonés, chino,
+  coreano, árabe y devanagari, sin elegir nada a mano.
+- **Modo atravesable**: los clics pasan a través del recuadro; se mueve desde
+  su pestaña (`Ctrl/Cmd + Shift + M`).
+- **Historial** con búsqueda y exportación a TXT, CSV (Excel), SRT y JSON.
+- **Lectura en voz alta** con las voces del sistema (prioriza las neuronales).
+- **Perfiles** que guardan la distribución de recuadros y se activan solos
+  cuando una app concreta pasa a primer plano.
+- **Mejora de imagen** para el OCR (contraste, inversión de fondos oscuros,
+  binarización) y ampliación adaptativa según el tamaño del texto.
+- **Icono en la bandeja** con todas las acciones; la configuración se guarda sola.
+- Ventana vertical **9:16**, paleta *Lunar Slate*, botón único
+  *Iniciar / Finalizar traducción* (`Ctrl/Cmd + Shift + T`).
+
+## Ejecutar
 
 Requiere [Node.js](https://nodejs.org) 18 o superior.
 
@@ -21,42 +32,56 @@ npm install
 npm start
 ```
 
-Para generar el instalador (`.exe`, `.dmg` o `.AppImage`):
+Pruebas automáticas y generación del instalador:
 
 ```bash
+npm test
 npm run dist
 ```
 
-> En macOS hay que conceder el permiso **Grabación de pantalla** la primera vez.
-> La primera traducción descarga los datos de idioma del OCR (necesita internet).
+> macOS: concede el permiso **Grabación de pantalla**. La primera vez se
+> descargan los idiomas del OCR (necesita internet; luego quedan en caché).
 
-## Cómo funciona
-
-1. Cada 0,8 / 1,5 / 3 s (según la velocidad elegida) se captura la zona de la
-   pantalla que queda dentro del recuadro (`desktopCapturer`).
-2. Si la imagen no cambió, no se hace nada (ahorra CPU).
-3. Si cambió, se lee el texto con **Tesseract.js** (OCR local).
-4. Si el texto es nuevo, se traduce (el servicio detecta el idioma) y se muestra
-   en la app y en el subtítulo.
-
-El subtítulo está *fuera* de la zona capturada, por eso no se vuelve a leer.
-
-## Estructura
+## Arquitectura y rendimiento
 
 ```
 src/
-  main.js          proceso principal: ventanas, captura, OCR y bucle
-  translator.js    proveedor de traducción (fácil de sustituir)
-  languages.js     idiomas del OCR según el idioma de origen
-  preload.js       puente seguro entre procesos
-  renderer/        interfaz vertical (Traducir + Guía de uso)
-  overlay/         recuadro transparente y subtítulo
+  main/
+    index.js        orquestación: ventanas, IPC, perfiles, atajos
+    engine.js       bucle por recuadro: cambio → OCR → traducción → pintado
+    capture.js      cliente de captura (+ respaldo con desktopCapturer)
+    ocr.js          grupo de workers Tesseract y detección de alfabeto
+    translator.js   traductor con caché LRU, reintentos y cancelación
+    box-window.js   ventana transparente de cada recuadro
+    history.js      historial y exportación
+    config.js       configuración validada; json-file.js escritura atómica
+    foreground.js   app en primer plano (sin módulos nativos)
+    tray.js         bandeja del sistema
+  capture/          ventana oculta: stream de pantalla (WebCodecs)
+  overlay/          recuadro, capa de traducción y subtítulo
+  renderer/         interfaz principal y lectura en voz alta
+  shared/imaging.js preprocesado, huellas de cambio y muestreo de color
 ```
 
-## Limitaciones actuales
+Claves para que vaya fluido:
 
-- El traductor usa el endpoint público gratuito de Google Translate: sin clave,
-  pero sin garantías de disponibilidad ni de límite de uso. Para uso intensivo
-  cambia `src/translator.js` por DeepL o Google Cloud con tu clave de API.
-- La detección automática del OCR cubre idiomas de alfabeto latino. Para
-  japonés, chino, coreano, ruso o árabe elige el idioma de origen manualmente.
+- **Stream de pantalla persistente** (`MediaStreamTrackProcessor` + `VideoFrame`):
+  recortar el recuadro es instantáneo, sin pedir capturas nuevas.
+- **Detección de cambios barata** (huella de 48×12 bloques): el OCR solo corre
+  cuando el contenido cambia y se estabiliza.
+- **OCR sin codificar imágenes**: se pasa escala de grises en bruto (PGM).
+- **Workers precalentados** y uno por alfabeto, en paralelo; el alfabeto
+  detectado se fija por recuadro (lecturas siguientes de ~40 ms).
+- **Traducción por párrafos en paralelo**, con caché, conexión HTTP reutilizada
+  (`net.fetch` + preconexión) y cancelación de peticiones obsoletas.
+- El recuadro se **excluye de la captura** (`setContentProtection`); si el
+  sistema no lo respeta, la app lo detecta sola y oculta la capa un instante
+  al capturar.
+
+## Limitaciones
+
+- El traductor usa el endpoint público gratuito de Google Translate: sin clave
+  ni garantías de disponibilidad. Se cambia en `src/main/translator.js`.
+- El recuadro tampoco aparece al compartir pantalla o grabar (es intencionado).
+- En Linux el modo atravesable se alterna solo con el atajo, y la detección de
+  la app en primer plano necesita `xprop` (X11).

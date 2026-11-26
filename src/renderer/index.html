@@ -8,10 +8,7 @@
 </head>
 <body>
   <header class="titlebar">
-    <div class="brand">
-      <span class="logo"></span>
-      <span>Traductor de Pantalla</span>
-    </div>
+    <div class="brand"><span class="logo"></span><span>Traductor de Pantalla</span></div>
     <div class="win-controls">
       <button id="btn-min" title="Minimizar" aria-label="Minimizar">&#8211;</button>
       <button id="btn-close" title="Cerrar" aria-label="Cerrar">&#10005;</button>
@@ -20,104 +17,148 @@
 
   <nav class="tabs" role="tablist">
     <button class="tab active" data-tab="translate" role="tab">Traducir</button>
-    <button class="tab" data-tab="guide" role="tab">Guía de uso</button>
+    <button class="tab" data-tab="history" role="tab">Historial</button>
+    <button class="tab" data-tab="settings" role="tab">Ajustes</button>
+    <button class="tab" data-tab="guide" role="tab">Guía</button>
   </nav>
 
-  <!-- ============ TRADUCIR ============ -->
+  <div class="notice" id="notice" hidden><span id="notice-text"></span><button id="notice-close" aria-label="Cerrar aviso">&#10005;</button></div>
+
+  <!-- ================= TRADUCIR ================= -->
   <main id="tab-translate" class="panel active">
-    <section class="langs">
-      <label class="field">
-        <span>Desde</span>
-        <select id="source"></select>
-      </label>
-      <span class="arrow">&#8594;</span>
-      <label class="field">
-        <span>Hacia</span>
-        <select id="target"></select>
-      </label>
+    <section class="boxes">
+      <div class="chips" id="box-chips"></div>
+      <button class="icon-btn" id="btn-add-box" title="Nuevo recuadro"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg></button>
     </section>
 
-    <div class="status" id="status">
-      <span class="dot"></span><span id="status-text">Listo para traducir</span>
-    </div>
+    <section class="langs">
+      <label class="field"><span>Desde</span><select id="source"></select></label>
+      <span class="arrow">&#8594;</span>
+      <label class="field"><span>Hacia</span><select id="target"></select></label>
+    </section>
+
+    <section class="row">
+      <div class="segmented" id="mode" role="radiogroup" aria-label="Mostrar traducción">
+        <button data-value="inplace" title="Pinta la traducción encima del texto original">Sobre el texto</button>
+        <button data-value="caption" title="Subtítulo bajo el recuadro">Subtítulo</button>
+        <button data-value="panel" title="Solo en esta ventana">Solo aquí</button>
+      </div>
+      <button class="icon-btn" id="btn-box-visible" title="Ocultar este recuadro"><svg class="i-on" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg><svg class="i-off" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3l18 18M10.6 5.1A10.8 10.8 0 0 1 12 5c6.4 0 10 7 10 7a17 17 0 0 1-3.2 4.1M6.6 6.6C3.8 8.4 2 12 2 12s3.6 7 10 7a9.7 9.7 0 0 0 5.4-1.6M9.9 9.9a3 3 0 0 0 4.2 4.2"/></svg></button>
+      <button class="icon-btn" id="btn-box-remove" title="Eliminar este recuadro"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/></svg></button>
+    </section>
+
+    <div class="status" id="status"><span class="dot"></span><span id="status-text">Listo</span></div>
 
     <section class="card result">
       <div class="card-head">
         <span class="chip" id="detected">—</span>
-        <button class="ghost" id="btn-copy" title="Copiar traducción">Copiar</button>
+        <div class="actions">
+          <button class="ghost" id="btn-speak" title="Leer en voz alta">Escuchar</button>
+          <button class="ghost" id="btn-copy" title="Copiar traducción">Copiar</button>
+        </div>
       </div>
-      <p id="translated" class="translated placeholder">
-        Coloca el recuadro sobre el texto y pulsa <b>Iniciar traducción</b>.
-      </p>
-      <details class="original">
-        <summary>Texto original</summary>
-        <p id="original">—</p>
-      </details>
-    </section>
-
-    <section class="options">
-      <label class="field">
-        <span>Velocidad</span>
-        <select id="interval">
-          <option value="800">Rápida</option>
-          <option value="1500" selected>Normal</option>
-          <option value="3000">Ahorro</option>
-        </select>
-      </label>
-      <label class="check">
-        <input type="checkbox" id="caption" checked>
-        <span>Subtítulo bajo el recuadro</span>
-      </label>
-      <button class="ghost wide" id="btn-overlay">Ocultar recuadro</button>
+      <p id="translated" class="translated placeholder">Coloca el recuadro sobre el texto y pulsa <b>Iniciar traducción</b>.</p>
+      <details class="original"><summary>Texto original</summary><p id="original">—</p></details>
     </section>
 
     <button id="btn-toggle" class="primary">Iniciar traducción</button>
-    <p class="hint">Atajo: <kbd>Ctrl</kbd> + <kbd>Shift</kbd> + <kbd>T</kbd></p>
+    <p class="hint"><kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>T</kbd> iniciar/finalizar · <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>M</kbd> atravesable</p>
   </main>
 
-  <!-- ============ GUÍA ============ -->
+  <!-- ================= HISTORIAL ================= -->
+  <main id="tab-history" class="panel">
+    <section class="row">
+      <input type="search" id="history-search" placeholder="Buscar en el historial…" aria-label="Buscar">
+    </section>
+    <section class="row">
+      <select id="export-format" aria-label="Formato">
+        <option value="txt">Texto (.txt)</option>
+        <option value="csv">Excel (.csv)</option>
+        <option value="srt">Subtítulos (.srt)</option>
+        <option value="json">JSON</option>
+      </select>
+      <button class="ghost" id="btn-export">Exportar</button>
+      <button class="ghost danger" id="btn-clear">Borrar</button>
+    </section>
+    <p class="muted small" id="history-count"></p>
+    <ul class="history" id="history-list"></ul>
+    <button class="ghost wide" id="btn-more" hidden>Mostrar más</button>
+  </main>
+
+  <!-- ================= AJUSTES ================= -->
+  <main id="tab-settings" class="panel">
+    <section class="card group">
+      <h3>Rendimiento</h3>
+      <div class="setting">
+        <span>Velocidad</span>
+        <div class="segmented" id="speed">
+          <button data-value="fast">Rápida</button>
+          <button data-value="normal">Normal</button>
+          <button data-value="saver">Ahorro</button>
+        </div>
+      </div>
+      <div class="setting">
+        <span>Mejora de imagen</span>
+        <div class="segmented" id="enhance">
+          <button data-value="off">No</button>
+          <button data-value="auto">Auto</button>
+          <button data-value="strong">Intensa</button>
+        </div>
+      </div>
+    </section>
+
+    <section class="card group">
+      <h3>Interacción</h3>
+      <label class="switch"><span>Modo atravesable<small>Los clics pasan a través del recuadro; muévelo desde su pestaña.</small></span><input type="checkbox" id="click-through"><i></i></label>
+      <label class="switch"><span>Cerrar a la bandeja<small>La app sigue disponible en la bandeja del sistema.</small></span><input type="checkbox" id="close-to-tray"><i></i></label>
+      <button class="ghost wide" id="btn-boxes-visible">Ocultar todos los recuadros</button>
+    </section>
+
+    <section class="card group">
+      <h3>Lectura en voz alta</h3>
+      <label class="switch"><span>Leer automáticamente<small>Lee cada traducción nueva del recuadro seleccionado.</small></span><input type="checkbox" id="tts-auto"><i></i></label>
+      <label class="field"><span>Voz</span><select id="tts-voice"></select></label>
+      <label class="field"><span>Velocidad de lectura <b id="tts-rate-val">1.0×</b></span><input type="range" id="tts-rate" min="0.5" max="2" step="0.1"></label>
+    </section>
+
+    <section class="card group">
+      <h3>Perfiles</h3>
+      <label class="field"><span>Perfil activo</span><select id="profile"></select></label>
+      <label class="field"><span>Activar automáticamente con la app</span><select id="profile-app"></select></label>
+      <p class="muted small">Cambia a este perfil cuando la app elegida pasa a primer plano. Abre esa app un momento para que aparezca en la lista.</p>
+      <div class="row">
+        <input type="text" id="profile-name" placeholder="Nombre del nuevo perfil" maxlength="40">
+        <button class="ghost" id="btn-profile-new">Crear</button>
+      </div>
+      <button class="ghost danger wide" id="btn-profile-delete">Eliminar perfil activo</button>
+    </section>
+  </main>
+
+  <!-- ================= GUÍA ================= -->
   <main id="tab-guide" class="panel guide">
     <ol class="steps">
-      <li>
-        <h3>Ubica el recuadro</h3>
-        <p>Al abrir la app aparece un recuadro casi transparente. Arrástralo desde
-        cualquier punto de su interior y colócalo sobre el texto que quieres traducir.</p>
-      </li>
-      <li>
-        <h3>Ajusta el tamaño</h3>
-        <p>Usa las esquinas y bordes para agrandarlo o achicarlo. Que abarque solo el
-        texto: cuanto más ajustado, más precisa la lectura.</p>
-      </li>
-      <li>
-        <h3>Elige los idiomas</h3>
-        <p><b>Desde</b> puede quedar en <i>Detectar automáticamente</i> (idiomas latinos).
-        Para japonés, chino, coreano, ruso o árabe, selecciónalo manualmente.
-        En <b>Hacia</b> elige el idioma al que quieres traducir.</p>
-      </li>
-      <li>
-        <h3>Inicia la traducción</h3>
-        <p>Pulsa <b>Iniciar traducción</b> (o <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>T</kbd>).
-        La traducción aparece aquí y, si está activado, como subtítulo bajo el recuadro.
-        Se actualiza sola cuando el texto cambia.</p>
-      </li>
-      <li>
-        <h3>Finaliza</h3>
-        <p>Pulsa el mismo botón, ahora <b>Finalizar traducción</b>, para detenerla.</p>
-      </li>
+      <li><h3>Ubica el recuadro</h3><p>Arrástralo desde su <b>pestaña</b> o su interior y colócalo sobre el texto. Ajusta el tamaño desde esquinas y bordes: cuanto más ajustado al texto, mejor.</p></li>
+      <li><h3>Elige los idiomas</h3><p><b>Desde</b> puede quedar en <b>Detectar automáticamente</b>: reconoce alfabeto latino, cirílico, japonés, chino, coreano, árabe y devanagari. <b>Hacia</b> es el idioma al que traduces.</p></li>
+      <li><h3>Elige cómo verla</h3><p><b>Sobre el texto</b> tapa el original con la traducción, con sus mismos colores. <b>Subtítulo</b> la muestra debajo. <b>Solo aquí</b> la deja en esta ventana.</p></li>
+      <li><h3>Inicia</h3><p>Pulsa <b>Iniciar traducción</b> o <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>T</kbd>. Se actualiza sola en cuanto cambia el texto. El mismo botón la finaliza.</p></li>
+      <li><h3>Varios recuadros</h3><p>Con <b>+</b> añades hasta 6, cada uno con sus idiomas y modo. Selecciónalos con las pestañas numeradas.</p></li>
+      <li><h3>Modo atravesable</h3><p>Actívalo en Ajustes o con <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>M</kbd> para seguir usando lo que hay debajo (pausar un vídeo, jugar). Para mover el recuadro, pasa el ratón por su pestaña.</p></li>
+      <li><h3>Perfiles</h3><p>Guarda distribuciones de recuadros (p. ej. «Netflix», «Juego») y asígnales una app para que se activen solas.</p></li>
     </ol>
-
     <div class="card tips">
       <h3>Consejos</h3>
       <ul>
-        <li>No coloques esta ventana encima del recuadro: también se leería.</li>
-        <li>Texto con buen contraste y tamaño mediano se lee mejor.</li>
-        <li>En subtítulos de video usa velocidad <i>Rápida</i>.</li>
+        <li>Para subtítulos de vídeo usa velocidad <b>Rápida</b> y mejora <b>Intensa</b>.</li>
+        <li>No pongas esta ventana encima de un recuadro: también se leería.</li>
+        <li>El recuadro no aparece en grabaciones ni al compartir pantalla.</li>
         <li>La primera vez se descargan los idiomas del OCR (requiere internet).</li>
-        <li>En macOS concede el permiso de <i>Grabación de pantalla</i>.</li>
+        <li>En macOS concede el permiso de <b>Grabación de pantalla</b>.</li>
+        <li>En Linux, el modo atravesable se activa y desactiva solo con el atajo.</li>
       </ul>
     </div>
   </main>
 
+  <script src="tts.js"></script>
   <script src="app.js"></script>
 </body>
 </html>
