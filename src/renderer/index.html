@@ -1,0 +1,123 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self'; script-src 'self'">
+  <title>Traductor de Pantalla</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header class="titlebar">
+    <div class="brand">
+      <span class="logo"></span>
+      <span>Traductor de Pantalla</span>
+    </div>
+    <div class="win-controls">
+      <button id="btn-min" title="Minimizar" aria-label="Minimizar">&#8211;</button>
+      <button id="btn-close" title="Cerrar" aria-label="Cerrar">&#10005;</button>
+    </div>
+  </header>
+
+  <nav class="tabs" role="tablist">
+    <button class="tab active" data-tab="translate" role="tab">Traducir</button>
+    <button class="tab" data-tab="guide" role="tab">Guía de uso</button>
+  </nav>
+
+  <!-- ============ TRADUCIR ============ -->
+  <main id="tab-translate" class="panel active">
+    <section class="langs">
+      <label class="field">
+        <span>Desde</span>
+        <select id="source"></select>
+      </label>
+      <span class="arrow">&#8594;</span>
+      <label class="field">
+        <span>Hacia</span>
+        <select id="target"></select>
+      </label>
+    </section>
+
+    <div class="status" id="status">
+      <span class="dot"></span><span id="status-text">Listo para traducir</span>
+    </div>
+
+    <section class="card result">
+      <div class="card-head">
+        <span class="chip" id="detected">—</span>
+        <button class="ghost" id="btn-copy" title="Copiar traducción">Copiar</button>
+      </div>
+      <p id="translated" class="translated placeholder">
+        Coloca el recuadro sobre el texto y pulsa <b>Iniciar traducción</b>.
+      </p>
+      <details class="original">
+        <summary>Texto original</summary>
+        <p id="original">—</p>
+      </details>
+    </section>
+
+    <section class="options">
+      <label class="field">
+        <span>Velocidad</span>
+        <select id="interval">
+          <option value="800">Rápida</option>
+          <option value="1500" selected>Normal</option>
+          <option value="3000">Ahorro</option>
+        </select>
+      </label>
+      <label class="check">
+        <input type="checkbox" id="caption" checked>
+        <span>Subtítulo bajo el recuadro</span>
+      </label>
+      <button class="ghost wide" id="btn-overlay">Ocultar recuadro</button>
+    </section>
+
+    <button id="btn-toggle" class="primary">Iniciar traducción</button>
+    <p class="hint">Atajo: <kbd>Ctrl</kbd> + <kbd>Shift</kbd> + <kbd>T</kbd></p>
+  </main>
+
+  <!-- ============ GUÍA ============ -->
+  <main id="tab-guide" class="panel guide">
+    <ol class="steps">
+      <li>
+        <h3>Ubica el recuadro</h3>
+        <p>Al abrir la app aparece un recuadro casi transparente. Arrástralo desde
+        cualquier punto de su interior y colócalo sobre el texto que quieres traducir.</p>
+      </li>
+      <li>
+        <h3>Ajusta el tamaño</h3>
+        <p>Usa las esquinas y bordes para agrandarlo o achicarlo. Que abarque solo el
+        texto: cuanto más ajustado, más precisa la lectura.</p>
+      </li>
+      <li>
+        <h3>Elige los idiomas</h3>
+        <p><b>Desde</b> puede quedar en <i>Detectar automáticamente</i> (idiomas latinos).
+        Para japonés, chino, coreano, ruso o árabe, selecciónalo manualmente.
+        En <b>Hacia</b> elige el idioma al que quieres traducir.</p>
+      </li>
+      <li>
+        <h3>Inicia la traducción</h3>
+        <p>Pulsa <b>Iniciar traducción</b> (o <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>T</kbd>).
+        La traducción aparece aquí y, si está activado, como subtítulo bajo el recuadro.
+        Se actualiza sola cuando el texto cambia.</p>
+      </li>
+      <li>
+        <h3>Finaliza</h3>
+        <p>Pulsa el mismo botón, ahora <b>Finalizar traducción</b>, para detenerla.</p>
+      </li>
+    </ol>
+
+    <div class="card tips">
+      <h3>Consejos</h3>
+      <ul>
+        <li>No coloques esta ventana encima del recuadro: también se leería.</li>
+        <li>Texto con buen contraste y tamaño mediano se lee mejor.</li>
+        <li>En subtítulos de video usa velocidad <i>Rápida</i>.</li>
+        <li>La primera vez se descargan los idiomas del OCR (requiere internet).</li>
+        <li>En macOS concede el permiso de <i>Grabación de pantalla</i>.</li>
+      </ul>
+    </div>
+  </main>
+
+  <script src="app.js"></script>
+</body>
+</html>

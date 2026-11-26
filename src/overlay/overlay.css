@@ -1,0 +1,62 @@
+* { box-sizing: border-box; margin: 0; }
+
+html, body {
+  height: 100%;
+  background: transparent;
+  overflow: hidden;
+  font: 15px/1.4 "Segoe UI", system-ui, -apple-system, Roboto, sans-serif;
+}
+
+body { display: flex; flex-direction: column; }
+
+/* Recuadro: transparencia muy tenue */
+.box {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  -webkit-app-region: drag;
+  background: rgba(231, 238, 245, 0.04);
+  border: 1px solid rgba(231, 238, 245, 0.35);
+  border-radius: 6px;
+  /* contorno oscuro para que se vea también sobre fondos claros */
+  box-shadow: 0 0 0 1px rgba(11, 13, 16, 0.35), inset 0 0 0 1px rgba(11, 13, 16, 0.2);
+  transition: border-color .3s;
+}
+.box:hover { border-color: rgba(231, 238, 245, 0.6); }
+body.running .box {
+  border-color: rgba(231, 238, 245, 0.55);
+  animation: breathe 2.4s ease-in-out infinite;
+}
+@keyframes breathe { 50% { border-color: rgba(93, 111, 130, 0.5); } }
+
+/* Tiradores de redimensionado */
+.h { position: absolute; -webkit-app-region: no-drag; }
+.n, .s { left: 12px; right: 12px; height: 8px; cursor: ns-resize; }
+.n { top: -4px; } .s { bottom: -4px; }
+.e, .w { top: 12px; bottom: 12px; width: 8px; cursor: ew-resize; }
+.e { right: -4px; } .w { left: -4px; }
+.nw, .ne, .sw, .se { width: 14px; height: 14px; }
+.nw { top: -2px; left: -2px; cursor: nwse-resize; border-top: 2px solid #E7EEF5; border-left: 2px solid #E7EEF5; border-top-left-radius: 6px; }
+.ne { top: -2px; right: -2px; cursor: nesw-resize; border-top: 2px solid #E7EEF5; border-right: 2px solid #E7EEF5; border-top-right-radius: 6px; }
+.sw { bottom: -2px; left: -2px; cursor: nesw-resize; border-bottom: 2px solid #E7EEF5; border-left: 2px solid #E7EEF5; border-bottom-left-radius: 6px; }
+.se { bottom: -2px; right: -2px; cursor: nwse-resize; border-bottom: 2px solid #E7EEF5; border-right: 2px solid #E7EEF5; border-bottom-right-radius: 6px; }
+.nw, .ne, .sw, .se { opacity: .7; filter: drop-shadow(0 0 1px rgba(11, 13, 16, .9)); }
+.box:hover .h { opacity: 1; }
+
+/* Subtítulo (fuera de la zona capturada) */
+.caption {
+  flex: none;
+  margin-top: 6px;
+  padding: 6px 10px;
+  border-radius: 6px;
+  background: rgba(11, 13, 16, 0.86);
+  border: 1px solid #2A333D;
+  color: #E7EEF5;
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  -webkit-app-region: drag;
+}
+.caption:empty { visibility: hidden; }
+body:not(.with-caption) .caption { display: none; }
