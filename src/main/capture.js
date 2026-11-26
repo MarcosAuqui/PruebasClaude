@@ -89,7 +89,9 @@ class Capture {
   }
 
   /** Recorta y preprocesa una zona (coordenadas DIP de pantalla). */
-  async grab({ boxId, rect, enhance, zoom, fresh, fps }) {
+  async grab({
+    boxId, rect, enhance, zoom, fresh, freshFrames, fps,
+  }) {
     const display = screen.getDisplayMatching(rect);
     if (!this.fallback) {
       try {
@@ -107,6 +109,7 @@ class Capture {
           zoom,
           enhance,
           fresh,
+          freshFrames,
         });
         this.failures = 0;
         return out;

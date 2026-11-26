@@ -108,7 +108,15 @@ async function grab(req) {
     await nextFrame(s, 0, 1500);
   }
   // Tras ocultar la capa (modo de respaldo) se espera un fotograma nuevo
-  if (req.fresh) await nextFrame(s, t0, 180);
+  if (req.fresh) {
+    // Se esperan varios fotogramas posteriores a ocultar la capa: algunos
+    // sistemas tardan en reflejar el cambio en la captura
+    let after = t0;
+    for (let i = 0; i < (req.freshFrames || 2); i++) {
+      await nextFrame(s, after, 150);
+      after = s.ts;
+    }
+  }
   const frame = s.latest;
   if (!frame) throw new Error('la pantalla no envía imagen');
 

@@ -6,6 +6,10 @@ const POLL = { fast: 110, normal: 240, saver: 700 };
 const MAX_WAIT = { fast: 450, normal: 900, saver: 2400 };
 const FPS = { fast: 30, normal: 20, saver: 8 };
 const CHANGED = 2; // bloques de la huella que deben cambiar
+// Tiempo mínimo entre traducciones nuevas de un mismo recuadro
+const MIN_GAP = { fast: 400, normal: 700, saver: 1500 };
+const SAME_TEXT = 0.85; // similitud a partir de la cual se considera el mismo texto (ruido del OCR)
+const OWN_TEXT = 0.55; // similitud con lo que pintamos → la captura nos ve a nosotros
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const norm = (s) => s.toLowerCase().replace(/[\s\p{P}]+/gu, '');
@@ -53,6 +57,11 @@ class BoxRunner {
     this.layerShowing = false;
     this.memo = { locked: null };
     this.force = true;
+    this.recentOut = []; // traducciones pintadas recientemente
+    this.paraCache = []; // { src, target, out, detected } por párrafo
+    this.lastTranslateAt = 0;
+    this.calibrating = false;
+    this.fallbackSent = false;
     if (this.abort) this.abort.abort();
     this.abort = null;
   }
@@ -89,6 +98,13 @@ class BoxRunner {
         errors = 0;
       } catch (err) {
         if (!this.active || (err && err.name === 'AbortError')) continue;
+        if (err && err.code === 'COOLDOWN') {
+          // Pausa del traductor: se mantiene la última traducción y se avisa
+          this.force = true;
+          this.ctx.emit('box-status', { boxId: this.id, text: `Pausa: ${err.message}`, level: 'warn' });
+          await sleep(Math.min(5000, Math.max(1000, err.retryIn || 1000)));
+          continue;
+        }
         errors += 1;
         this.bw.setStatus('error');
         this.ctx.emit('box-status', { boxId: this.id, text: `Error: ${err.message}`, level: 'error' });
@@ -115,6 +131,7 @@ class BoxRunner {
         enhance: settings.enhance,
         zoom: this.zoom,
         fresh: needHide,
+        freshFrames: ctx.exclusion.waitFrames || 2,
         fps: FPS[settings.speed],
       });
     } finally {
@@ -134,7 +151,11 @@ class BoxRunner {
     const stable = changedBlocks(g.sig, this.lastGrabSig) < CHANGED;
     this.lastGrabSig = g.sig;
     const due = now - this.lastOcrAt > MAX_WAIT[settings.speed];
-    if (!this.force && !(changed && (stable || due))) return;
+    // En modo de respaldo se relee cada ~2 s aunque no cambie la imagen: así
+    // se comprueba que ocultar la capa funciona y se detecta texto nuevo debajo
+    const recheck = !ctx.exclusion.works && this.layerShowing
+      && now - this.lastOcrAt > (this.calibrating ? 450 : 2000);
+    if (!this.force && !recheck && !(changed && (stable || due))) return;
     this.force = false;
     this.lastOcrSig = g.sig;
     this.lastOcrAt = now;
@@ -154,23 +175,49 @@ class BoxRunner {
       return;
     }
 
-    // ¿La captura incluye nuestra propia traducción? → el sistema no
-    // respeta la exclusión: se pasa al modo de respaldo.
-    if (this.layerShowing && ctx.exclusion.works && similarity(r.text, this.displayed) > 0.6
-      && similarity(r.text, this.lastText) < 0.6) {
-      ctx.exclusion.works = false;
-      this.force = true;
+    // ¿El OCR está leyendo nuestra propia traducción pintada encima? Pasa
+    // cuando el sistema no excluye el recuadro de la captura (o el fotograma
+    // llega tarde). Nunca se traduce eso: se ignora este fotograma y se
+    // refuerza el modo de respaldo (ocultar la capa al capturar).
+    if (this.layerShowing && this.isOwnText(r.text)) {
+      this.lastOcrSig = g.sig; // no volver a leer este mismo fotograma
+      this.calibrating = true; // se reajusta rápido hasta lograr una lectura limpia
+      if (ctx.exclusion.works) {
+        ctx.exclusion.works = false;
+      } else if ((ctx.exclusion.waitFrames || 2) < 6) {
+        ctx.exclusion.waitFrames = (ctx.exclusion.waitFrames || 2) + 1;
+      } else {
+        // Ni ocultando la capa se logra una captura limpia en este equipo:
+        // el subtítulo (fuera de la zona capturada) nunca se lee a sí mismo
+        bw.send('overlay:clear');
+        this.layerShowing = false;
+        if (!this.fallbackSent) ctx.emit('fallback-caption', { boxId: box.id });
+        this.fallbackSent = true;
+      }
       return;
     }
 
-    if (this.abort) this.abort.abort();
-    const abort = new AbortController();
-    this.abort = abort;
-    const source = box.source;
-    const results = await Promise.all(
-      r.paragraphs.map((p) => ctx.translate(p.text, box.target, source, abort.signal)),
-    );
-    if (!this.active || abort.signal.aborted) return;
+    this.calibrating = false;
+
+    // Párrafos ya traducidos (o casi iguales por ruido del OCR) no se piden otra vez
+    const results = r.paragraphs.map((p) => this.cached(p.text, box.target));
+    const missing = results.map((x, i) => (x ? -1 : i)).filter((i) => i >= 0);
+    if (missing.length) {
+      const wait = MIN_GAP[settings.speed] - (Date.now() - this.lastTranslateAt);
+      if (wait > 0) { this.force = true; return; } // demasiado pronto: se reintenta luego
+      this.lastTranslateAt = Date.now();
+      if (this.abort) this.abort.abort();
+      const abort = new AbortController();
+      this.abort = abort;
+      const fetched = await Promise.all(
+        missing.map((i) => ctx.translate(r.paragraphs[i].text, box.target, box.source, abort.signal)),
+      );
+      if (!this.active || abort.signal.aborted) return;
+      missing.forEach((i, k) => {
+        results[i] = fetched[k];
+        this.remember(r.paragraphs[i].text, box.target, fetched[k]);
+      });
+    }
 
     let colors = [];
     if (box.mode === 'inplace') {
@@ -193,9 +240,15 @@ class BoxRunner {
     bw.send('overlay:render', { items: inplace, caption: box.mode === 'caption' ? translated : '' });
     this.layerShowing = inplace.length > 0;
     this.displayed = translated;
+    if (inplace.length) {
+      this.recentOut.push(translated);
+      if (this.recentOut.length > 8) this.recentOut.shift();
+    }
 
+    // Solo se registra como resultado nuevo si el texto cambió de verdad
     const key = `${box.target}|${r.text}`;
-    if (key !== this.lastKey) {
+    const sameAsLast = this.lastKey.startsWith(`${box.target}|`) && similarity(r.text, this.lastText) >= SAME_TEXT;
+    if (key !== this.lastKey && !sameAsLast) {
       this.lastKey = key;
       this.lastText = r.text;
       ctx.emit('result', {
@@ -209,6 +262,28 @@ class BoxRunner {
       });
     }
     ctx.emit('box-status', { boxId: box.id, text: 'Traduciendo en vivo', level: 'live' });
+  }
+
+  isOwnText(text) {
+    if (similarity(text, this.lastText) >= OWN_TEXT) return false;
+    return this.recentOut.some((t) => similarity(text, t) > OWN_TEXT);
+  }
+
+  cached(text, target) {
+    let best = null;
+    let bestSim = SAME_TEXT;
+    for (const e of this.paraCache) {
+      if (e.target !== target) continue;
+      if (e.src === text) return e.res;
+      const sim = similarity(text, e.src);
+      if (sim >= bestSim) { best = e.res; bestSim = sim; }
+    }
+    return best;
+  }
+
+  remember(src, target, res) {
+    this.paraCache.push({ src, target, res });
+    if (this.paraCache.length > 40) this.paraCache.shift();
   }
 
   /** Ajusta la ampliación para que el texto llegue al OCR a ~34 px de alto. */

@@ -115,6 +115,8 @@ input[type="range"] { width: 100%; accent-color: var(--text); }
 .status.error { color: var(--danger); }
 .status.error .dot, .dot.error { background: var(--danger); }
 .dot.muted { background: var(--muted); }
+.status.warn { color: #e6cf9c; }
+.status.warn .dot, .dot.warn { background: #e6cf9c; }
 @keyframes pulse { 50% { opacity: .25; } }
 
 /* ---------- Tarjetas ---------- */

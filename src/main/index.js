@@ -34,7 +34,7 @@ const recentApps = [];
 const boxWins = new Map(); // boxId → BoxWindow
 const runners = new Map(); // boxId → BoxRunner
 const boxStatus = new Map(); // boxId → { text, level }
-const exclusion = { works: process.platform === 'win32' || process.platform === 'darwin' };
+const exclusion = { works: process.platform === 'win32' || process.platform === 'darwin', waitFrames: 2 };
 
 const profile = () => cfg.profiles.find((p) => p.id === cfg.activeProfileId);
 const boxes = () => profile().boxes;
@@ -123,6 +123,9 @@ const engineCtx = {
       const item = history.add({ ...data, profile: profile().name });
       sendMain('result', data);
       if (item) sendMain('history:added', item);
+    } else if (type === 'fallback-caption') {
+      updateBox(data.boxId, { mode: 'caption' });
+      sendMain('notice', 'Tu sistema no permite pintar la traducción sobre el texto sin que se lea a sí misma. Este recuadro pasó a modo Subtítulo.');
     } else if (type === 'box-status') {
       const prev = boxStatus.get(data.boxId);
       if (prev && prev.text === data.text) return;
