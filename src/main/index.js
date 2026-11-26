@@ -434,6 +434,9 @@ app.whenReady().then(() => {
   capture = new Capture();
   ocr = new OcrPool({
     cachePath: path.join(app.getPath('userData'), 'tessdata'),
+    bundledPath: app.isPackaged
+      ? path.join(process.resourcesPath, 'tessdata')
+      : path.join(ROOT, '..', 'build', 'tessdata'),
     onStatus: (text) => sendMain('notice', text),
   });
   watcher = new ForegroundWatcher();

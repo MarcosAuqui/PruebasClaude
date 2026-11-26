@@ -23,7 +23,43 @@ que queda dentro de uno o varios recuadros casi transparentes en pantalla.
 - Ventana vertical **9:16**, paleta *Lunar Slate*, botón único
   *Iniciar / Finalizar traducción* (`Ctrl/Cmd + Shift + T`).
 
-## Ejecutar
+## Descargar e instalar
+
+| Sistema | Archivo | Cómo instalar |
+|---|---|---|
+| Windows | `…-instalador-windows.exe` | Ábrelo y sigue el asistente (crea acceso directo). |
+| Windows | `…-portable-windows.exe` o `…-win-x64.zip` | Sin instalar: ejecútalo / descomprime y abre `Traductor de Pantalla.exe`. |
+| macOS (Apple M1–M4) | `…-mac-arm64.dmg` | Arrastra la app a Aplicaciones. |
+| macOS (Intel) | `…-mac-x64.dmg` | Arrastra la app a Aplicaciones. |
+| Linux | `…-linux-x86_64.AppImage` | `chmod +x` y ejecútalo. |
+| Ubuntu / Debian | `…-linux-amd64.deb` | `sudo apt install ./archivo.deb` |
+
+Los instaladores se generan solos con GitHub Actions (pestaña **Actions** →
+*Compilar instaladores* → sección *Artifacts*). Al crear una etiqueta `v*`
+(p. ej. `v2.0.0`) se publican además en **Releases** como descarga pública.
+
+> **Aviso de seguridad la primera vez.** La app no está firmada con un
+> certificado comercial, así que el sistema avisa:
+> - **Windows** («Windows protegió su PC»): *Más información* → *Ejecutar de todas formas*.
+> - **macOS**: clic derecho sobre la app → *Abrir* → *Abrir*. Si dice que está
+>   dañada: `xattr -cr "/Applications/Traductor de Pantalla.app"`.
+>
+> Para quitar estos avisos hace falta un certificado de firma de código
+> (Windows) y una cuenta de Apple Developer (macOS).
+
+Los modelos de OCR de los alfabetos de la detección automática vienen
+incluidos: funciona sin descargar nada la primera vez (solo la traducción
+necesita internet).
+
+## Compilar desde el código
+
+```bash
+npm install
+npm run dist          # el sistema actual
+npm run dist:win-zip  # Windows portable desde Linux/macOS sin Wine
+```
+
+## Ejecutar en desarrollo
 
 Requiere [Node.js](https://nodejs.org) 18 o superior.
 
@@ -32,11 +68,10 @@ npm install
 npm start
 ```
 
-Pruebas automáticas y generación del instalador:
+Pruebas automáticas (la del OCR necesita `npm run prepare-ocr` antes):
 
 ```bash
 npm test
-npm run dist
 ```
 
 > macOS: concede el permiso **Grabación de pantalla**. La primera vez se

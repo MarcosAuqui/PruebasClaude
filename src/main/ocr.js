@@ -1,3 +1,4 @@
+const fs = require('fs');
 const { createWorker } = require('tesseract.js');
 const { AUTO_GROUPS, TESS_BY_CODE } = require('./languages');
 
@@ -94,8 +95,9 @@ function parse(data) {
 }
 
 class OcrPool {
-  constructor({ cachePath, onStatus }) {
+  constructor({ cachePath, bundledPath, onStatus }) {
     this.cachePath = cachePath;
+    this.bundledPath = bundledPath; // modelos incluidos en el instalador
     this.onStatus = onStatus || (() => {});
     this.workers = new Map(); // langs → { promise, lastUsed }
     this.sweeper = setInterval(() => this.sweep(), 60 * 1000);
@@ -115,9 +117,10 @@ class OcrPool {
   }
 
   async create(langs) {
-    const slow = setTimeout(() => this.onStatus(`Descargando idioma del OCR (${langs})… solo la primera vez`), 1200);
+    const slow = this.isBundled(langs) ? null : setTimeout(() => this.onStatus(`Descargando idioma del OCR (${langs})… solo la primera vez`), 1200);
     // Si la descarga falla, tesseract invoca errorHandler y la promesa de
     // createWorker nunca se resuelve: por eso la carrera.
+    await this.seed(langs);
     let fail;
     const failed = new Promise((_, reject) => { fail = reject; });
     failed.catch(() => {});
@@ -133,6 +136,29 @@ class OcrPool {
     } finally {
       clearTimeout(slow);
     }
+  }
+
+  /** ¿Están todos los idiomas incluidos en la app? Entonces no se descarga nada. */
+  isBundled(langs) {
+    if (!this.bundledPath) return false;
+    return langs.split('+').every((l) => fs.existsSync(`${this.bundledPath}/${l}.traineddata.gz`));
+  }
+
+  /**
+   * Copia a la caché del OCR los modelos incluidos en la app (solo la primera
+   * vez). Tesseract los lee de la caché sin descargar nada; acepta el .gz tal cual.
+   */
+  async seed(langs) {
+    if (!this.bundledPath) return;
+    await fs.promises.mkdir(this.cachePath, { recursive: true }).catch(() => {});
+    await Promise.all(langs.split('+').map(async (l) => {
+      const dst = `${this.cachePath}/${l}.traineddata`;
+      const src = `${this.bundledPath}/${l}.traineddata.gz`;
+      if (fs.existsSync(dst) || !fs.existsSync(src)) return;
+      const tmp = `${dst}.tmp`;
+      await fs.promises.copyFile(src, tmp);
+      await fs.promises.rename(tmp, dst);
+    })).catch(() => { /* si falla, se descargará */ });
   }
 
   warm(langs = LATIN) { return this.get(langs).then(() => true, () => false); }
@@ -159,7 +185,10 @@ class OcrPool {
 
     if (memo.locked) {
       const r = await tryLangs(memo.locked);
-      if (!r.paragraphs.length || r.conf >= 60) return r;
+      if (r.conf >= 75 && r.paragraphs.length) return r;
+      if (!r.rawWords && !r.paragraphs.length) return r; // no hay texto
+      // Hay texto que el alfabeto fijado no entiende: se vuelve a detectar
+      memo.failedAt = 0;
     }
     const latin = await tryLangs(LATIN);
     if (!latin.rawWords && !latin.paragraphs.length) return latin; // no hay texto

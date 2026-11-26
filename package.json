@@ -7,32 +7,122 @@
   "scripts": {
     "start": "electron .",
     "test": "node --test \"test/**/*.test.js\"",
-    "dist": "electron-builder"
+    "prepare-ocr": "node scripts/prepare-tessdata.js",
+    "dist": "npm run prepare-ocr && electron-builder --publish never",
+    "dist:win": "npm run prepare-ocr && electron-builder --win --publish never",
+    "dist:mac": "npm run prepare-ocr && electron-builder --mac --publish never",
+    "dist:linux": "npm run prepare-ocr && electron-builder --linux --publish never",
+    "dist:win-zip": "npm run prepare-ocr && electron-builder --win zip --publish never -c.win.signAndEditExecutable=false"
   },
   "dependencies": {
     "tesseract.js": "^5.1.1"
   },
   "devDependencies": {
+    "@tesseract.js-data/ara": "^1.0.0",
+    "@tesseract.js-data/chi_sim": "^1.0.0",
+    "@tesseract.js-data/deu": "^1.0.0",
+    "@tesseract.js-data/eng": "^1.0.0",
+    "@tesseract.js-data/fra": "^1.0.0",
+    "@tesseract.js-data/hin": "^1.0.0",
+    "@tesseract.js-data/ita": "^1.0.0",
+    "@tesseract.js-data/jpn": "^1.0.0",
+    "@tesseract.js-data/kor": "^1.0.0",
+    "@tesseract.js-data/por": "^1.0.0",
+    "@tesseract.js-data/rus": "^1.0.0",
+    "@tesseract.js-data/spa": "^1.0.0",
     "electron": "^33.2.0",
-    "electron-builder": "^25.1.8"
+    "electron-builder": "^25.1.8",
+    "resedit": "^1.7.2"
   },
   "build": {
     "appId": "app.traductor.pantalla",
     "productName": "Traductor de Pantalla",
+    "copyright": "Traductor de Pantalla",
+    "artifactName": "Traductor-de-Pantalla-${version}-${os}-${arch}.${ext}",
+    "directories": {
+      "output": "dist"
+    },
     "files": [
       "src/**/*",
       "assets/**/*",
       "package.json"
     ],
+    "asar": true,
+    "asarUnpack": [
+      "node_modules/tesseract.js/**",
+      "node_modules/tesseract.js-core/**"
+    ],
+    "extraResources": [
+      {
+        "from": "build/tessdata",
+        "to": "tessdata"
+      }
+    ],
     "icon": "assets/icon.png",
     "win": {
-      "target": "nsis"
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "zip",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "assets/icon.ico"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Traductor de Pantalla",
+      "artifactName": "Traductor-de-Pantalla-${version}-instalador-windows.${ext}"
+    },
+    "portable": {
+      "artifactName": "Traductor-de-Pantalla-${version}-portable-windows.${ext}"
     },
     "mac": {
-      "target": "dmg"
+      "target": [
+        {
+          "target": "dmg",
+          "arch": [
+            "arm64",
+            "x64"
+          ]
+        }
+      ],
+      "category": "public.app-category.productivity",
+      "identity": null,
+      "extendInfo": {
+        "NSScreenCaptureUsageDescription": "Necesario para leer el texto dentro de los recuadros y traducirlo."
+      }
+    },
+    "dmg": {
+      "artifactName": "Traductor-de-Pantalla-${version}-mac-${arch}.${ext}"
     },
     "linux": {
-      "target": "AppImage"
-    }
-  }
+      "target": [
+        "AppImage",
+        "deb"
+      ],
+      "category": "Utility",
+      "maintainer": "Traductor de Pantalla",
+      "synopsis": "Traducción de pantalla en tiempo real"
+    },
+    "afterPack": "scripts/after-pack.js"
+  },
+  "author": "Traductor de Pantalla"
 }
