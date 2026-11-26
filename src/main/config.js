@@ -4,6 +4,7 @@ const { CODES } = require('./languages');
 const SPEEDS = ['fast', 'normal', 'saver'];
 const ENHANCE = ['off', 'auto', 'strong'];
 const MODES = ['inplace', 'caption', 'panel'];
+const PROVIDERS = ['google-free', 'deepl', 'google-cloud'];
 
 const uid = () => crypto.randomUUID().slice(0, 8);
 
@@ -28,6 +29,8 @@ function defaults() {
       clickThrough: false,
       closeToTray: true,
       tts: { auto: false, voice: '', rate: 1 },
+      // Las claves se guardan cifradas con el sistema (safeStorage)
+      translator: { provider: 'google-free', fallback: true, deepl: '', 'google-cloud': '' },
     },
     profiles: [{ id: 'default', name: 'General', app: '', boxes: [defaultBox()] }],
     activeProfileId: 'default',
@@ -65,6 +68,8 @@ function sanitize(data) {
   if (!data || typeof data !== 'object') return d;
   const s = data.settings || {};
   const tts = s.tts || {};
+  const tr = s.translator || {};
+  const secret = (v) => (typeof v === 'string' && /^(enc|b64):[A-Za-z0-9+/=]{1,4000}$/.test(v) ? v : '');
   const out = {
     version: 2,
     settings: {
@@ -76,6 +81,12 @@ function sanitize(data) {
         auto: !!tts.auto,
         voice: str(tts.voice),
         rate: Number.isFinite(tts.rate) ? Math.min(2, Math.max(0.5, tts.rate)) : 1,
+      },
+      translator: {
+        provider: pick(tr.provider, PROVIDERS, 'google-free'),
+        fallback: tr.fallback !== false,
+        deepl: secret(tr.deepl),
+        'google-cloud': secret(tr['google-cloud']),
       },
     },
     profiles: [],
@@ -104,5 +115,5 @@ function sanitize(data) {
 }
 
 module.exports = {
-  defaults, sanitize, sanitizeBox, defaultBox, uid, SPEEDS, ENHANCE, MODES,
+  defaults, sanitize, sanitizeBox, defaultBox, uid, SPEEDS, ENHANCE, MODES, PROVIDERS,
 };

@@ -29,6 +29,10 @@ contextBridge.exposeInMainWorld('api', {
   historyList: invoke('history:list'),
   historyClear: invoke('history:clear'),
   historyExport: invoke('history:export'),
+  setApiKey: invoke('translator:set-key'),
+  clearApiKey: invoke('translator:clear-key'),
+  testApiKey: invoke('translator:test'),
+  apiKeyHelp: invoke('translator:help'),
   minimize: () => ipcRenderer.send('win:minimize'),
   close: () => ipcRenderer.send('win:close'),
 

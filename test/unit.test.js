@@ -130,7 +130,7 @@ test('translator: caché, reintento y errores', async () => {
   };
   delete require.cache[require.resolve('../src/main/translator')];
   const { translate } = require('../src/main/translator');
-  assert.deepEqual(await translate('Hello world', 'es'), { translated: 'Hola mundo', detected: 'en' });
+  assert.deepEqual(await translate('Hello world', 'es'), { translated: 'Hola mundo', detected: 'en', provider: 'Google gratuito' });
   await translate('Hello world', 'es');
   assert.equal(calls, 1, 'segunda vez sale de la caché');
   calls = 0;

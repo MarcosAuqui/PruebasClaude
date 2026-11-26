@@ -13,6 +13,10 @@ que queda dentro de uno o varios recuadros casi transparentes en pantalla.
   coreano, árabe y devanagari, sin elegir nada a mano.
 - **Modo atravesable**: los clics pasan a través del recuadro; se mueve desde
   su pestaña (`Ctrl/Cmd + Shift + M`).
+- **Traductor a elegir**: Google gratis (sin clave), **DeepL** o **Google Cloud**
+  con clave propia (ambos con 500.000 caracteres gratis al mes). La clave se
+  guarda cifrada con el almacén seguro del sistema y, si falla, se usa Google
+  gratis como respaldo.
 - **Historial** con búsqueda y exportación a TXT, CSV (Excel), SRT y JSON.
 - **Lectura en voz alta** con las voces del sistema (prioriza las neuronales).
 - **Perfiles** que guardan la distribución de recuadros y se activan solos
@@ -115,8 +119,9 @@ Claves para que vaya fluido:
 
 ## Limitaciones
 
-- El traductor usa el endpoint público gratuito de Google Translate: sin clave
-  ni garantías de disponibilidad. Se cambia en `src/main/translator.js`.
+- Google gratis no requiere clave pero limita las solicitudes por conexión
+  (la app hace pausas automáticas). Con DeepL o Google Cloud el límite es
+  mucho mayor.
 - El recuadro tampoco aparece al compartir pantalla o grabar (es intencionado).
 - En Linux el modo atravesable se alterna solo con el atajo, y la detección de
   la app en primer plano necesita `xprop` (X11).

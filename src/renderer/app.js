@@ -152,11 +152,41 @@ function renderResult() {
   t.classList.remove('placeholder');
   t.textContent = r.translated;
   $('original').textContent = r.original;
-  $('detected').textContent = `${langName(r.detected)} → ${langName(r.target)}`;
+  $('detected').textContent = `${langName(r.detected)} → ${langName(r.target)}${r.provider ? ` · ${r.provider}` : ''}`;
+}
+
+const PROVIDER_HELP = {
+  'google-free': 'Sin clave ni cuenta. Google limita las solicitudes por conexión: si traduces mucho, puede pedir esperar unos minutos.',
+  deepl: 'Traducciones más naturales. Gratis hasta 500.000 caracteres al mes con una cuenta «DeepL API Free» (pide tarjeta solo para verificar, no cobra).',
+  'google-cloud': 'Google Translate oficial: 500.000 caracteres gratis al mes. Requiere un proyecto con «Cloud Translation API» activada y facturación.',
+};
+
+function showKeyResult(text, kind) {
+  const el = $('key-result');
+  el.textContent = text;
+  el.className = `small key-result ${kind || ''}`;
+  el.hidden = !text;
+}
+
+function renderTranslator() {
+  const t = S.settings.translator;
+  setSegmented($('provider'), t.provider);
+  const needsKey = t.provider !== 'google-free';
+  $('key-box').hidden = !needsKey;
+  $('fallback').checked = t.fallback;
+  let help = PROVIDER_HELP[t.provider];
+  if (needsKey && !t[t.provider]) help += ' Sin clave guardada: mientras tanto se usa Google gratis.';
+  $('provider-help').textContent = help;
+  if (needsKey) {
+    $('key-saved').textContent = t[t.provider] ? `· guardada ${t[t.provider]}` : '· sin guardar';
+    $('btn-key-clear').disabled = !t[t.provider];
+    if (t[t.provider] && !t.encrypted) $('key-saved').textContent += ' (sin cifrar: este sistema no ofrece almacén seguro)';
+  }
 }
 
 function renderSettings() {
   const s = S.settings;
+  renderTranslator();
   setSegmented($('speed'), s.speed);
   setSegmented($('enhance'), s.enhance);
   $('click-through').checked = s.clickThrough;
@@ -288,6 +318,43 @@ $('btn-speak').onclick = () => {
   if (TTS.speaking()) { TTS.stop(); return; }
   if (!TTS.speak(r.translated, r.target, S.settings.tts)) notice('La lectura en voz alta no está disponible en este sistema');
 };
+
+onSegmented($('provider'), (v) => {
+  $('api-key').value = '';
+  showKeyResult('');
+  api.updateSettings({ translator: { provider: v } });
+});
+$('fallback').onchange = (e) => api.updateSettings({ translator: { fallback: e.target.checked } });
+$('api-key').addEventListener('keydown', (e) => { if (e.key === 'Enter') $('btn-key-save').click(); });
+$('btn-key-save').onclick = async () => {
+  const provider = S.settings.translator.provider;
+  const key = $('api-key').value.trim();
+  if (!key) { showKeyResult('Pega primero la clave en el campo.', 'bad'); return; }
+  const btn = $('btn-key-save');
+  btn.disabled = true;
+  showKeyResult('Comprobando la clave…');
+  const res = await api.testApiKey(provider, key);
+  btn.disabled = false;
+  if (!res.ok) { showKeyResult(`No se guardó: ${res.message}`, 'bad'); return; }
+  await api.setApiKey(provider, key);
+  $('api-key').value = '';
+  showKeyResult(`Clave guardada y funcionando. Prueba: «${res.sample}»`, 'ok');
+};
+$('btn-key-test').onclick = async () => {
+  const provider = S.settings.translator.provider;
+  if (!$('api-key').value.trim() && !S.settings.translator[provider]) {
+    showKeyResult('Pega una clave en el campo o guarda una primero.', 'bad');
+    return;
+  }
+  showKeyResult('Probando…');
+  const res = await api.testApiKey(provider, $('api-key').value.trim());
+  showKeyResult(res.ok ? `Funciona. Prueba: «${res.sample}»` : `Error: ${res.message}`, res.ok ? 'ok' : 'bad');
+};
+$('btn-key-clear').onclick = async () => {
+  await api.clearApiKey(S.settings.translator.provider);
+  showKeyResult('Clave borrada de este equipo.');
+};
+$('btn-key-help').onclick = () => api.apiKeyHelp(S.settings.translator.provider);
 
 onSegmented($('speed'), (v) => api.updateSettings({ speed: v }));
 onSegmented($('enhance'), (v) => api.updateSettings({ enhance: v }));

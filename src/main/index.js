@@ -1,12 +1,20 @@
 const path = require('path');
 const {
   app, BrowserWindow, ipcMain, globalShortcut, dialog, session, systemPreferences, screen,
+  safeStorage, shell,
 } = require('electron');
 const { JsonFile } = require('./json-file');
 const config = require('./config');
 const { History } = require('./history');
 const { OcrPool } = require('./ocr');
-const { translate, ENDPOINT } = require('./translator');
+const translator = require('./translator');
+
+const { translate, ENDPOINT } = translator;
+const KEY_PROVIDERS = ['deepl', 'google-cloud'];
+const KEY_HELP_URL = {
+  deepl: 'https://www.deepl.com/pro-api',
+  'google-cloud': 'https://console.cloud.google.com/apis/library/translate.googleapis.com',
+};
 const { Capture } = require('./capture');
 const { BoxWindow } = require('./box-window');
 const { BoxRunner } = require('./engine');
@@ -42,10 +50,55 @@ const findBox = (id) => boxes().find((b) => b.id === id);
 
 // ---------------------------------------------------------------- estado
 
+// ---------------------------------------------------------------- claves de API
+// Se cifran con el almacén seguro del sistema (DPAPI en Windows, Llavero en
+// macOS, libsecret en Linux). La interfaz nunca recibe la clave completa.
+
+function seal(key) {
+  if (!key) return '';
+  if (safeStorage.isEncryptionAvailable()) return `enc:${safeStorage.encryptString(key).toString('base64')}`;
+  return `b64:${Buffer.from(key, 'utf8').toString('base64')}`;
+}
+
+function unseal(v) {
+  try {
+    if (v && v.startsWith('enc:')) return safeStorage.decryptString(Buffer.from(v.slice(4), 'base64'));
+    if (v && v.startsWith('b64:')) return Buffer.from(v.slice(4), 'base64').toString('utf8');
+  } catch { /* clave ilegible (otro usuario/equipo) */ }
+  return '';
+}
+
+function applyTranslator() {
+  const t = cfg.settings.translator;
+  translator.configure({
+    provider: t.provider,
+    fallback: t.fallback,
+    keys: { deepl: unseal(t.deepl), 'google-cloud': unseal(t['google-cloud']) },
+  });
+  translator.resetNotices();
+}
+
+function maskedTranslator() {
+  const t = cfg.settings.translator;
+  const mask = (v) => { const k = unseal(v); return k ? `••••${k.slice(-4)}` : ''; };
+  return {
+    provider: t.provider,
+    fallback: t.fallback,
+    active: translator.activeProvider(),
+    encrypted: safeStorage.isEncryptionAvailable(),
+    deepl: mask(t.deepl),
+    'google-cloud': mask(t['google-cloud']),
+  };
+}
+
+function resetRunners() {
+  for (const r of runners.values()) if (r.active) r.reset();
+}
+
 function publicState() {
   return {
     running,
-    settings: cfg.settings,
+    settings: { ...cfg.settings, translator: maskedTranslator() },
     boxes: boxes(),
     boxStatus: Object.fromEntries(boxStatus),
     profiles: cfg.profiles.map(({ id, name, app: a }) => ({ id, name, app: a })),
@@ -289,12 +342,24 @@ function updateWatcher() {
 
 function updateSettings(patch) {
   const s = cfg.settings;
+  // Las claves solo se cambian por su canal propio, nunca por aquí
+  const trPatch = { ...(patch.translator || {}) };
+  delete trPatch.deepl;
+  delete trPatch['google-cloud'];
   const next = config.sanitize({
     ...cfg,
-    settings: { ...s, ...patch, tts: { ...s.tts, ...(patch.tts || {}) } },
+    settings: {
+      ...s,
+      ...patch,
+      tts: { ...s.tts, ...(patch.tts || {}) },
+      translator: { ...s.translator, ...trPatch },
+    },
   }).settings;
   const ctChanged = next.clickThrough !== s.clickThrough;
+  const trChanged = next.translator.provider !== s.translator.provider
+    || next.translator.fallback !== s.translator.fallback;
   cfg.settings = next;
+  if (trChanged) { applyTranslator(); resetRunners(); }
   if (ctChanged) for (const bw of boxWins.values()) bw.applyClickThrough(next.clickThrough);
   persist();
   broadcast();
@@ -412,6 +477,38 @@ function registerIpc() {
     const count = await history.export(filePath, ext);
     return { count, filePath };
   }));
+  ipcMain.handle('translator:set-key', fromMain((provider, key) => {
+    if (!KEY_PROVIDERS.includes(provider) || typeof key !== 'string') return false;
+    const clean = key.trim().slice(0, 500);
+    if (!clean) return false;
+    cfg.settings.translator[provider] = seal(clean);
+    applyTranslator();
+    resetRunners();
+    persist();
+    broadcast();
+    return true;
+  }));
+  ipcMain.handle('translator:clear-key', fromMain((provider) => {
+    if (!KEY_PROVIDERS.includes(provider)) return;
+    cfg.settings.translator[provider] = '';
+    applyTranslator();
+    resetRunners();
+    persist();
+    broadcast();
+  }));
+  ipcMain.handle('translator:test', fromMain(async (provider, key) => {
+    if (!KEY_PROVIDERS.includes(provider)) return { ok: false, message: 'proveedor no válido' };
+    const k = typeof key === 'string' && key.trim() ? key.trim() : unseal(cfg.settings.translator[provider]);
+    if (!k) return { ok: false, message: 'no hay ninguna clave guardada' };
+    try {
+      return { ok: true, sample: await translator.testKey(provider, k) };
+    } catch (err) {
+      return { ok: false, message: err.message };
+    }
+  }));
+  ipcMain.handle('translator:help', fromMain((provider) => {
+    if (KEY_HELP_URL[provider]) shell.openExternal(KEY_HELP_URL[provider]);
+  }));
   ipcMain.on('win:minimize', fromMain(() => mainWin.minimize()));
   ipcMain.on('win:close', fromMain(() => mainWin.close()));
 
@@ -442,6 +539,8 @@ app.whenReady().then(() => {
       : path.join(ROOT, '..', 'build', 'tessdata'),
     onStatus: (text) => sendMain('notice', text),
   });
+  translator.configure({ onNotice: (text) => sendMain('notice', text) });
+  applyTranslator();
   watcher = new ForegroundWatcher();
   watcher.on('change', onForeground);
 

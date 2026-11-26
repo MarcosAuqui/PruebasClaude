@@ -64,11 +64,11 @@ button:disabled { opacity: .35; cursor: default; }
 .field > span { font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }
 .field > span b { color: var(--text); font-weight: 500; text-transform: none; letter-spacing: 0; }
 
-select, input[type="text"], input[type="search"] {
+select, input[type="text"], input[type="search"], input[type="password"] {
   width: 100%; padding: 8px 10px;
   background: var(--surface); border: 1px solid var(--line); border-radius: 8px; outline: none;
 }
-input[type="text"], input[type="search"] { user-select: text; }
+input[type="text"], input[type="search"], input[type="password"] { user-select: text; }
 select:focus, input:focus { border-color: var(--muted); }
 option { background: var(--surface); }
 input[type="range"] { width: 100%; accent-color: var(--text); }
@@ -192,3 +192,13 @@ kbd { font: 10.5px/1 inherit; padding: 2px 4px; border: 1px solid var(--line); b
 
 ::-webkit-scrollbar { width: 8px; height: 8px; }
 ::-webkit-scrollbar-thumb { background: var(--line); border-radius: 4px; }
+
+/* ---------- Traductor ---------- */
+.key-box { display: flex; flex-direction: column; gap: 8px; }
+.key-box[hidden] { display: none; }
+.key-box input[type="password"] { font-family: ui-monospace, Consolas, monospace; letter-spacing: .04em; }
+.grow { flex: 1; }
+.key-result { padding: 6px 9px; border-radius: 7px; background: var(--bg); border: 1px solid var(--line); user-select: text; }
+.key-result[hidden] { display: none; }
+.key-result.ok { color: #a9dcb5; border-color: #35513d; }
+.key-result.bad { color: var(--danger); border-color: #5a3434; }

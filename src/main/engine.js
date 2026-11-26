@@ -257,6 +257,7 @@ class BoxRunner {
         original: r.text,
         translated,
         detected: results[0].detected,
+        provider: results[0].provider || '',
         target: box.target,
         ts: Date.now(),
       });
