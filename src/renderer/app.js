@@ -156,10 +156,12 @@ function renderResult() {
 }
 
 const PROVIDER_HELP = {
-  'google-free': 'Sin clave ni cuenta. Google limita las solicitudes por conexión: si traduces mucho, puede pedir esperar unos minutos.',
+  'google-free': 'Sin clave ni cuenta: usa Google y, si Google lo limita, MyMemory (unos 5.000 caracteres al día). Para uso continuo (vídeos, juegos) conviene una clave gratis de Microsoft o DeepL.',
+  microsoft: 'El plan gratuito más amplio: 2 millones de caracteres al mes. Crea un recurso «Translator» en Azure (nivel F0, gratis) y copia su clave y su región.',
   deepl: 'Traducciones más naturales. Gratis hasta 500.000 caracteres al mes con una cuenta «DeepL API Free» (pide tarjeta solo para verificar, no cobra).',
   'google-cloud': 'Google Translate oficial: 500.000 caracteres gratis al mes. Requiere un proyecto con «Cloud Translation API» activada y facturación.',
 };
+const regionValue = () => $('ms-region').value.trim().toLowerCase();
 
 function showKeyResult(text, kind) {
   const el = $('key-result');
@@ -170,12 +172,14 @@ function showKeyResult(text, kind) {
 
 function renderTranslator() {
   const t = S.settings.translator;
-  setSegmented($('provider'), t.provider);
+  $('provider').value = t.provider;
   const needsKey = t.provider !== 'google-free';
+  $('region-field').hidden = t.provider !== 'microsoft';
+  if (document.activeElement !== $('ms-region')) $('ms-region').value = t.msRegion || '';
   $('key-box').hidden = !needsKey;
   $('fallback').checked = t.fallback;
   let help = PROVIDER_HELP[t.provider];
-  if (needsKey && !t[t.provider]) help += ' Sin clave guardada: mientras tanto se usa Google gratis.';
+  if (needsKey && !t[t.provider]) help += ' Sin clave guardada: mientras tanto se usa el traductor gratuito.';
   $('provider-help').textContent = help;
   if (needsKey) {
     $('key-saved').textContent = t[t.provider] ? `· guardada ${t[t.provider]}` : '· sin guardar';
@@ -319,10 +323,13 @@ $('btn-speak').onclick = () => {
   if (!TTS.speak(r.translated, r.target, S.settings.tts)) notice('La lectura en voz alta no está disponible en este sistema');
 };
 
-onSegmented($('provider'), (v) => {
+$('provider').onchange = (e) => {
   $('api-key').value = '';
   showKeyResult('');
-  api.updateSettings({ translator: { provider: v } });
+  api.updateSettings({ translator: { provider: e.target.value } });
+};
+$('ms-region').addEventListener('change', () => {
+  if (S.settings.translator.microsoft) api.updateSettings({ translator: { msRegion: regionValue() } });
 });
 $('fallback').onchange = (e) => api.updateSettings({ translator: { fallback: e.target.checked } });
 $('api-key').addEventListener('keydown', (e) => { if (e.key === 'Enter') $('btn-key-save').click(); });
@@ -333,10 +340,10 @@ $('btn-key-save').onclick = async () => {
   const btn = $('btn-key-save');
   btn.disabled = true;
   showKeyResult('Comprobando la clave…');
-  const res = await api.testApiKey(provider, key);
+  const res = await api.testApiKey(provider, key, regionValue());
   btn.disabled = false;
   if (!res.ok) { showKeyResult(`No se guardó: ${res.message}`, 'bad'); return; }
-  await api.setApiKey(provider, key);
+  await api.setApiKey(provider, key, regionValue());
   $('api-key').value = '';
   showKeyResult(`Clave guardada y funcionando. Prueba: «${res.sample}»`, 'ok');
 };
@@ -347,7 +354,7 @@ $('btn-key-test').onclick = async () => {
     return;
   }
   showKeyResult('Probando…');
-  const res = await api.testApiKey(provider, $('api-key').value.trim());
+  const res = await api.testApiKey(provider, $('api-key').value.trim(), regionValue());
   showKeyResult(res.ok ? `Funciona. Prueba: «${res.sample}»` : `Error: ${res.message}`, res.ok ? 'ok' : 'bad');
 };
 $('btn-key-clear').onclick = async () => {

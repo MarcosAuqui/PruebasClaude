@@ -13,10 +13,11 @@ que queda dentro de uno o varios recuadros casi transparentes en pantalla.
   coreano, árabe y devanagari, sin elegir nada a mano.
 - **Modo atravesable**: los clics pasan a través del recuadro; se mueve desde
   su pestaña (`Ctrl/Cmd + Shift + M`).
-- **Traductor a elegir**: Google gratis (sin clave), **DeepL** o **Google Cloud**
-  con clave propia (ambos con 500.000 caracteres gratis al mes). La clave se
-  guarda cifrada con el almacén seguro del sistema y, si falla, se usa Google
-  gratis como respaldo.
+- **Traductor a elegir**: modo gratis sin clave (Google y, si Google lo limita,
+  MyMemory), o con clave propia **Microsoft Translator** (2 millones de
+  caracteres gratis al mes), **DeepL** o **Google Cloud** (500.000 al mes). La
+  clave se valida, se guarda cifrada con el almacén seguro del sistema y, si
+  falla, se usa el modo gratis como respaldo.
 - **Historial** con búsqueda y exportación a TXT, CSV (Excel), SRT y JSON.
 - **Lectura en voz alta** con las voces del sistema (prioriza las neuronales).
 - **Perfiles** que guardan la distribución de recuadros y se activan solos
@@ -119,9 +120,9 @@ Claves para que vaya fluido:
 
 ## Limitaciones
 
-- Google gratis no requiere clave pero limita las solicitudes por conexión
-  (la app hace pausas automáticas). Con DeepL o Google Cloud el límite es
-  mucho mayor.
+- Los servicios gratuitos sin clave tienen límites: Google puede bloquear su
+  servicio gratuito para una conexión y MyMemory permite unos 5.000 caracteres
+  al día. Para uso continuo, usa una clave gratis de Microsoft o DeepL.
 - El recuadro tampoco aparece al compartir pantalla o grabar (es intencionado).
 - En Linux el modo atravesable se alterna solo con el atajo, y la detección de
   la app en primer plano necesita `xprop` (X11).

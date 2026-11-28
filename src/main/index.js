@@ -10,9 +10,10 @@ const { OcrPool } = require('./ocr');
 const translator = require('./translator');
 
 const { translate, ENDPOINT } = translator;
-const KEY_PROVIDERS = ['deepl', 'google-cloud'];
+const KEY_PROVIDERS = ['deepl', 'microsoft', 'google-cloud'];
 const KEY_HELP_URL = {
   deepl: 'https://www.deepl.com/pro-api',
+  microsoft: 'https://learn.microsoft.com/es-es/azure/ai-services/translator/create-translator-resource',
   'google-cloud': 'https://console.cloud.google.com/apis/library/translate.googleapis.com',
 };
 const { Capture } = require('./capture');
@@ -73,7 +74,8 @@ function applyTranslator() {
   translator.configure({
     provider: t.provider,
     fallback: t.fallback,
-    keys: { deepl: unseal(t.deepl), 'google-cloud': unseal(t['google-cloud']) },
+    keys: { deepl: unseal(t.deepl), microsoft: unseal(t.microsoft), 'google-cloud': unseal(t['google-cloud']) },
+    msRegion: t.msRegion,
   });
   translator.resetNotices();
 }
@@ -87,6 +89,8 @@ function maskedTranslator() {
     active: translator.activeProvider(),
     encrypted: safeStorage.isEncryptionAvailable(),
     deepl: mask(t.deepl),
+    microsoft: mask(t.microsoft),
+    msRegion: t.msRegion,
     'google-cloud': mask(t['google-cloud']),
   };
 }
@@ -345,6 +349,7 @@ function updateSettings(patch) {
   // Las claves solo se cambian por su canal propio, nunca por aquí
   const trPatch = { ...(patch.translator || {}) };
   delete trPatch.deepl;
+  delete trPatch.microsoft;
   delete trPatch['google-cloud'];
   const next = config.sanitize({
     ...cfg,
@@ -357,7 +362,8 @@ function updateSettings(patch) {
   }).settings;
   const ctChanged = next.clickThrough !== s.clickThrough;
   const trChanged = next.translator.provider !== s.translator.provider
-    || next.translator.fallback !== s.translator.fallback;
+    || next.translator.fallback !== s.translator.fallback
+    || next.translator.msRegion !== s.translator.msRegion;
   cfg.settings = next;
   if (trChanged) { applyTranslator(); resetRunners(); }
   if (ctChanged) for (const bw of boxWins.values()) bw.applyClickThrough(next.clickThrough);
@@ -477,11 +483,15 @@ function registerIpc() {
     const count = await history.export(filePath, ext);
     return { count, filePath };
   }));
-  ipcMain.handle('translator:set-key', fromMain((provider, key) => {
+  ipcMain.handle('translator:set-key', fromMain((provider, key, region) => {
     if (!KEY_PROVIDERS.includes(provider) || typeof key !== 'string') return false;
     const clean = key.trim().slice(0, 500);
     if (!clean) return false;
     cfg.settings.translator[provider] = seal(clean);
+    if (provider === 'microsoft' && typeof region === 'string') {
+      const r = region.trim().toLowerCase();
+      cfg.settings.translator.msRegion = /^[a-z0-9-]{0,40}$/.test(r) ? r : '';
+    }
     applyTranslator();
     resetRunners();
     persist();
@@ -496,12 +506,13 @@ function registerIpc() {
     persist();
     broadcast();
   }));
-  ipcMain.handle('translator:test', fromMain(async (provider, key) => {
+  ipcMain.handle('translator:test', fromMain(async (provider, key, region) => {
     if (!KEY_PROVIDERS.includes(provider)) return { ok: false, message: 'proveedor no válido' };
     const k = typeof key === 'string' && key.trim() ? key.trim() : unseal(cfg.settings.translator[provider]);
     if (!k) return { ok: false, message: 'no hay ninguna clave guardada' };
+    const reg = typeof region === 'string' ? region.trim().toLowerCase() : cfg.settings.translator.msRegion;
     try {
-      return { ok: true, sample: await translator.testKey(provider, k) };
+      return { ok: true, sample: await translator.testKey(provider, k, reg) };
     } catch (err) {
       return { ok: false, message: err.message };
     }

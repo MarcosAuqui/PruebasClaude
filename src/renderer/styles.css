@@ -202,3 +202,5 @@ kbd { font: 10.5px/1 inherit; padding: 2px 4px; border: 1px solid var(--line); b
 .key-result[hidden] { display: none; }
 .key-result.ok { color: #a9dcb5; border-color: #35513d; }
 .key-result.bad { color: var(--danger); border-color: #5a3434; }
+
+#region-field[hidden] { display: none; }

@@ -2,8 +2,13 @@
 // - google-free: endpoint público de Google (sin clave, límite por conexión)
 // - deepl: API de DeepL con clave propia (Free: 500.000 caracteres/mes)
 // - google-cloud: Google Cloud Translation v2 con clave propia
+// - microsoft: Microsoft Translator con clave propia (2 M caracteres/mes gratis)
+// - mymemory: API pública de MyMemory, sin clave (cuota diaria pequeña)
+// Modo gratuito = Google gratuito y, si Google lo bloquea, MyMemory.
 // Si el proveedor con clave falla (clave inválida, cuota agotada, idioma no
-// soportado) y el respaldo está activo, se usa Google gratuito.
+// soportado) y el respaldo está activo, se usa el modo gratuito.
+
+const { guessLanguage } = require('./langguess');
 
 let netFetch = globalThis.fetch;
 try {
@@ -21,12 +26,16 @@ const TIMEOUT = 8000;
 const state = {
   provider: 'google-free',
   fallback: true,
-  keys: { deepl: '', 'google-cloud': '' },
+  keys: { deepl: '', 'google-cloud': '', microsoft: '' },
+  msRegion: '',
   onNotice: () => {},
 };
 
-function configure({ provider, fallback, keys, onNotice } = {}) {
+function configure({
+  provider, fallback, keys, msRegion, onNotice,
+} = {}) {
   if (provider) state.provider = provider;
+  if (typeof msRegion === 'string') state.msRegion = msRegion;
   if (typeof fallback === 'boolean') state.fallback = fallback;
   if (keys) state.keys = { ...state.keys, ...keys };
   if (onNotice) state.onNotice = onNotice;
@@ -66,7 +75,13 @@ const googleFree = {
     const url = `${ENDPOINT}?client=gtx&dt=t&sl=${encodeURIComponent(source)}`
       + `&tl=${encodeURIComponent(target)}&q=${encodeURIComponent(text)}`;
     const res = await netFetch(url, { signal: signalWith(signal) });
-    if (res.status === 429) throw fail('demasiadas solicitudes', { status: 429 });
+    if (res.status === 429) {
+      // Página «Sorry…»: Google bloquea su servicio gratuito para esta conexión
+      let body = '';
+      try { body = await res.text(); } catch { /* nada */ }
+      const blocked = /sorry|unusual traffic|tráfico inusual/i.test(body);
+      throw fail(blocked ? 'Google está bloqueando su servicio gratuito' : 'demasiadas solicitudes a Google', { status: 429, blocked });
+    }
     if (!res.ok) throw fail(`Google respondió ${res.status}`, { status: res.status });
     const data = await res.json();
     const translated = (Array.isArray(data[0]) ? data[0] : []).map((s) => (s && s[0]) || '').join('');
@@ -151,7 +166,94 @@ const googleCloud = {
   },
 };
 
-const PROVIDERS = { 'google-free': googleFree, deepl, 'google-cloud': googleCloud };
+// MyMemory: API pública (uso anónimo permitido). Necesita el idioma de
+// origen, que se detecta localmente. Límite de 500 bytes por petición.
+const base = (c) => String(c || '').slice(0, 2).toLowerCase();
+
+function splitForLimit(text, max = 450) {
+  if (Buffer.byteLength(text) <= max) return [text];
+  const parts = [];
+  let cur = '';
+  for (const piece of text.split(/(?<=[.!?。！？])\s*/u)) {
+    const next = cur ? `${cur} ${piece}` : piece;
+    if (Buffer.byteLength(next) <= max) { cur = next; continue; }
+    if (cur) parts.push(cur);
+    // Frase demasiado larga: se corta por palabras
+    let chunk = '';
+    for (const w of piece.split(/\s+/)) {
+      const n = chunk ? `${chunk} ${w}` : w;
+      if (Buffer.byteLength(n) > max && chunk) { parts.push(chunk); chunk = w; } else chunk = n;
+    }
+    cur = chunk;
+  }
+  if (cur) parts.push(cur);
+  return parts;
+}
+
+const myMemory = {
+  name: 'MyMemory',
+  spacing: 350,
+  supports: () => true,
+  async translate(text, target, source, signal) {
+    const src = source === 'auto' ? guessLanguage(text) : source;
+    if (base(src) === base(target) && src !== 'zh-TW' && target !== 'zh-TW') return { translated: text, detected: src };
+    const out = [];
+    for (const piece of splitForLimit(text)) {
+      const url = `https://api.mymemory.translated.net/get?q=${encodeURIComponent(piece)}`
+        + `&langpair=${encodeURIComponent(src)}|${encodeURIComponent(target)}`;
+      const res = await netFetch(url, { signal: signalWith(signal) });
+      if (res.status === 429) throw fail('se agotó la cuota diaria gratuita de MyMemory', { status: 429, daily: true });
+      if (!res.ok) throw fail(`MyMemory respondió ${res.status}`, { status: res.status });
+      const data = await res.json();
+      const st = Number(data.responseStatus);
+      const t = (data.responseData && data.responseData.translatedText) || '';
+      if (st === 429 || data.quotaFinished || /MYMEMORY WARNING/i.test(t)) {
+        throw fail('se agotó la cuota diaria gratuita de MyMemory', { status: 429, daily: true });
+      }
+      if (st !== 200) throw fail(`MyMemory: ${data.responseDetails || st}`, { status: st >= 400 && st < 500 ? st : 500 });
+      out.push(decodeEntities(t));
+    }
+    return { translated: out.join(' '), detected: src };
+  },
+};
+
+// Microsoft Translator (Azure). Región: la del recurso (vacía si es global).
+const msCode = (c) => ({ 'zh-CN': 'zh-Hans', 'zh-TW': 'zh-Hant' }[c] || c);
+const fromMs = (c) => ({ 'zh-Hans': 'zh-CN', 'zh-Hant': 'zh-TW' }[c] || c);
+
+const microsoft = {
+  name: 'Microsoft',
+  spacing: 40,
+  supports: () => true,
+  async translate(text, target, source, signal, key = state.keys.microsoft, region = state.msRegion) {
+    let url = `https://api.cognitive.microsofttranslator.com/translate?api-version=3.0&to=${encodeURIComponent(msCode(target))}`;
+    if (source !== 'auto') url += `&from=${encodeURIComponent(msCode(source))}`;
+    const headers = { 'Ocp-Apim-Subscription-Key': key.trim(), 'Content-Type': 'application/json' };
+    if (region && region.trim()) headers['Ocp-Apim-Subscription-Region'] = region.trim();
+    const res = await netFetch(url, {
+      method: 'POST', headers, body: JSON.stringify([{ Text: text }]), signal: signalWith(signal),
+    });
+    if (!res.ok) {
+      const msg = await readError(res);
+      if (res.status === 401) {
+        throw fail(`la clave de Microsoft no es válida o no coincide con la región${msg ? ` (${msg})` : ''}`, { status: 401, auth: true });
+      }
+      if (res.status === 403) throw fail(`Microsoft: cuota agotada o recurso no permitido${msg ? ` (${msg})` : ''}`, { status: 403, quota: true });
+      if (res.status === 429) throw fail('demasiadas solicitudes a Microsoft', { status: 429 });
+      throw fail(`Microsoft respondió ${res.status}${msg ? `: ${msg}` : ''}`, { status: res.status });
+    }
+    const data = await res.json();
+    const item = Array.isArray(data) && data[0];
+    const t = item && item.translations && item.translations[0];
+    if (!t) throw fail('respuesta vacía de Microsoft');
+    return { translated: t.text, detected: fromMs((item.detectedLanguage && item.detectedLanguage.language) || source) };
+  },
+};
+
+const PROVIDERS = {
+  'google-free': googleFree, mymemory: myMemory, deepl, microsoft, 'google-cloud': googleCloud,
+};
+const FREE_CHAIN = ['google-free', 'mymemory'];
 
 // ---------------------------------------------------------------- caché
 
@@ -175,9 +277,14 @@ const lim = (p) => (limits[p] ||= { nextSlot: 0, until: 0, ms: 0 });
 
 function cooldownRemaining(p = activeProvider()) { return Math.max(0, lim(p).until - Date.now()); }
 
+function humanWait(ms) {
+  const secs = Math.ceil(ms / 1000);
+  return secs > 90 ? `${Math.ceil(secs / 60)} min` : `${secs} s`;
+}
+
 function cooldownError(p) {
-  const secs = Math.ceil(cooldownRemaining(p) / 1000);
-  return fail(`${PROVIDERS[p].name} pidió esperar por exceso de solicitudes; se reanuda solo en ${secs} s`, {
+  const wait = humanWait(cooldownRemaining(p));
+  return fail(`${PROVIDERS[p].name} pidió esperar por exceso de solicitudes; se reanuda solo en ${wait}`, {
     code: 'COOLDOWN', retryIn: cooldownRemaining(p),
   });
 }
@@ -203,9 +310,15 @@ async function callProvider(p, text, target, source) {
       lastErr = err;
       if (err.status === 429) {
         const l = lim(p);
-        l.ms = Math.min(COOLDOWN_MAX, l.ms ? l.ms * 2 : COOLDOWN_MIN);
-        l.until = Date.now() + l.ms;
-        throw cooldownError(p);
+        if (err.blocked) l.until = Date.now() + 30 * 60_000; // bloqueo de Google: no insistir en 30 min
+        else if (err.daily) l.until = Date.now() + 60 * 60_000; // cuota diaria agotada
+        else {
+          l.ms = Math.min(COOLDOWN_MAX, l.ms ? l.ms * 2 : COOLDOWN_MIN);
+          l.until = Date.now() + l.ms;
+        }
+        const e = cooldownError(p);
+        e.cause = err;
+        throw e;
       }
       if (err.status && err.status < 500) throw err; // clave, cuota, petición: no reintentar
       if (attempt < 2) await new Promise((r) => setTimeout(r, 300 + attempt * 600));
@@ -223,22 +336,53 @@ function noticeOnce(key, text) {
   state.onNotice(text);
 }
 
-/** Elige proveedor y aplica el respaldo a Google gratuito cuando corresponde. */
+/**
+ * Modo gratuito: Google y, si Google bloquea o pide esperar, MyMemory.
+ * Si todos están limitados, se informa cuándo se reintenta y qué hacer.
+ */
+async function runFree(text, target, source) {
+  let lastErr = null;
+  for (const p of FREE_CHAIN) {
+    if (cooldownRemaining(p)) { lastErr = cooldownError(p); continue; }
+    try {
+      const out = await callProvider(p, text, target, source);
+      if (p !== FREE_CHAIN[0]) {
+        noticeOnce('free:fallback', 'Google está limitando su traductor gratuito, así que se usa MyMemory (unos 5.000 caracteres al día). Para traducir sin cortes, añade una clave gratis de Microsoft o DeepL en Ajustes → Traductor.');
+      }
+      return out;
+    } catch (err) {
+      lastErr = err;
+      // Errores de la petición (4xx que no sean límites) no mejoran con otro servicio
+      if (err.status && err.status < 500 && err.status !== 429 && err.code !== 'COOLDOWN') throw err;
+    }
+  }
+  const waits = FREE_CHAIN.map((p) => cooldownRemaining(p)).filter(Boolean);
+  if (waits.length === FREE_CHAIN.length) {
+    const retryIn = Math.min(...waits);
+    throw fail(`los traductores gratuitos están limitando las solicitudes (se reintenta en ${humanWait(retryIn)}). Con una clave gratis de Microsoft o DeepL (Ajustes → Traductor) no dependes de ellos`, {
+      code: 'COOLDOWN', retryIn,
+    });
+  }
+  throw lastErr;
+}
+
+/** Elige proveedor y aplica el respaldo al modo gratuito cuando corresponde. */
 async function run(text, target, source) {
   const p = activeProvider();
-  if (p !== 'google-free' && !PROVIDERS[p].supports(target, source)) {
+  if (p === 'google-free') return runFree(text, target, source);
+  if (!PROVIDERS[p].supports(target, source)) {
     if (!state.fallback) throw fail(`${PROVIDERS[p].name} no admite este idioma`);
-    noticeOnce(`unsupported:${p}:${target}:${source}`, `${PROVIDERS[p].name} no admite ese idioma; para él se usa Google gratuito.`);
-    return callProvider('google-free', text, target, source);
+    noticeOnce(`unsupported:${p}:${target}:${source}`, `${PROVIDERS[p].name} no admite ese idioma; para él se usa el traductor gratuito.`);
+    return runFree(text, target, source);
   }
   try {
     return await callProvider(p, text, target, source);
   } catch (err) {
     const recoverable = err.auth || err.quota || err.code === 'COOLDOWN';
-    if (p === 'google-free' || !state.fallback || !recoverable) throw err;
+    if (!state.fallback || !recoverable) throw err;
     const kind = err.auth ? 'auth' : err.quota ? 'quota' : 'cool';
-    noticeOnce(`fallback:${p}:${kind}`, `${err.message[0].toUpperCase()}${err.message.slice(1)}. Mientras tanto se usa Google gratuito.`);
-    return callProvider('google-free', text, target, source);
+    noticeOnce(`fallback:${p}:${kind}`, `${err.message[0].toUpperCase()}${err.message.slice(1)}. Mientras tanto se usa el traductor gratuito.`);
+    return runFree(text, target, source);
   }
 }
 
@@ -265,12 +409,14 @@ async function translate(text, target, source = 'auto', signal) {
 }
 
 /** Prueba una clave sin guardarla ni usar la caché. */
-async function testKey(provider, key) {
+async function testKey(provider, key, region) {
   const P = PROVIDERS[provider];
-  if (!P || provider === 'google-free') throw fail('proveedor no válido');
+  if (!P || !['deepl', 'microsoft', 'google-cloud'].includes(provider)) throw fail('proveedor no válido');
   if (!key || !key.trim()) throw fail('escribe una clave');
   try {
-    const out = await P.translate('Hello, how are you?', 'es', 'auto', undefined, key);
+    const out = provider === 'microsoft'
+      ? await P.translate('Hello, how are you?', 'es', 'auto', undefined, key, region || '')
+      : await P.translate('Hello, how are you?', 'es', 'auto', undefined, key);
     return out.translated;
   } catch (err) {
     if (err.name === 'TimeoutError') throw fail(`${P.name} no responde; revisa tu conexión`);
@@ -286,7 +432,8 @@ function resetNotices() { noticed.clear(); }
 function _reset() {
   cache.clear(); inflight.clear(); noticed.clear();
   for (const k of Object.keys(limits)) delete limits[k];
-  state.provider = 'google-free'; state.fallback = true; state.keys = { deepl: '', 'google-cloud': '' };
+  state.provider = 'google-free'; state.fallback = true; state.msRegion = '';
+  state.keys = { deepl: '', 'google-cloud': '', microsoft: '' };
 }
 
 module.exports = {

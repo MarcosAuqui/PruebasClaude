@@ -4,7 +4,7 @@ const { CODES } = require('./languages');
 const SPEEDS = ['fast', 'normal', 'saver'];
 const ENHANCE = ['off', 'auto', 'strong'];
 const MODES = ['inplace', 'caption', 'panel'];
-const PROVIDERS = ['google-free', 'deepl', 'google-cloud'];
+const PROVIDERS = ['google-free', 'deepl', 'microsoft', 'google-cloud'];
 
 const uid = () => crypto.randomUUID().slice(0, 8);
 
@@ -30,7 +30,9 @@ function defaults() {
       closeToTray: true,
       tts: { auto: false, voice: '', rate: 1 },
       // Las claves se guardan cifradas con el sistema (safeStorage)
-      translator: { provider: 'google-free', fallback: true, deepl: '', 'google-cloud': '' },
+      translator: {
+        provider: 'google-free', fallback: true, deepl: '', microsoft: '', msRegion: '', 'google-cloud': '',
+      },
     },
     profiles: [{ id: 'default', name: 'General', app: '', boxes: [defaultBox()] }],
     activeProfileId: 'default',
@@ -86,6 +88,8 @@ function sanitize(data) {
         provider: pick(tr.provider, PROVIDERS, 'google-free'),
         fallback: tr.fallback !== false,
         deepl: secret(tr.deepl),
+        microsoft: secret(tr.microsoft),
+        msRegion: typeof tr.msRegion === 'string' && /^[a-z0-9-]{0,40}$/.test(tr.msRegion) ? tr.msRegion : '',
         'google-cloud': secret(tr['google-cloud']),
       },
     },

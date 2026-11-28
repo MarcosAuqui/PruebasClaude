@@ -99,7 +99,7 @@ test('límite del traductor (429): pausa global, sin insistir', async () => {
   server.mode = '429';
   const { world } = await run({ excludes: true, noisyOcr: true, real: true }, 5000);
   console.log('   con 429:', JSON.stringify({ peticionesHTTP: server.requests, avisos: world.errors.length }));
-  assert.equal(server.requests, 1, 'solo la primera petición llega al servidor');
+  assert.equal(server.requests, 2, 'una petición a cada servicio gratuito y luego pausa');
   assert.ok(realTranslator.cooldownRemaining() > 0, 'pausa activa');
   server.mode = 'ok';
 });

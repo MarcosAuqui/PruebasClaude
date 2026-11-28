@@ -89,16 +89,22 @@
   <main id="tab-settings" class="panel">
     <section class="card group">
       <h3>Traductor</h3>
-      <div class="segmented" id="provider">
-        <button data-value="google-free">Google gratis</button>
-        <button data-value="deepl">DeepL</button>
-        <button data-value="google-cloud">Google Cloud</button>
-      </div>
+      <label class="field"><span>Servicio</span>
+        <select id="provider">
+          <option value="google-free">Gratis, sin clave (Google / MyMemory)</option>
+          <option value="microsoft">Microsoft Translator · 2.000.000 car./mes gratis</option>
+          <option value="deepl">DeepL · 500.000 car./mes gratis</option>
+          <option value="google-cloud">Google Cloud · 500.000 car./mes gratis</option>
+        </select>
+      </label>
       <p class="muted small" id="provider-help"></p>
       <div class="key-box" id="key-box">
         <label class="field">
           <span>Clave de API <b id="key-saved"></b></span>
           <input type="password" id="api-key" placeholder="Pega aquí tu clave" autocomplete="off" spellcheck="false">
+        </label>
+        <label class="field" id="region-field"><span>Región del recurso <b>(p. ej. eastus, westeurope; vacío si es «Global»)</b></span>
+          <input type="text" id="ms-region" placeholder="eastus" autocomplete="off" spellcheck="false" maxlength="40">
         </label>
         <div class="row">
           <button class="ghost grow" id="btn-key-save">Guardar</button>
@@ -108,7 +114,7 @@
         <p class="small key-result" id="key-result" hidden></p>
         <button class="ghost wide" id="btn-key-help">Cómo conseguir una clave gratis</button>
       </div>
-      <label class="switch"><span>Usar Google gratis si falla<small>Si la clave no es válida, se agota la cuota o el idioma no está disponible, sigue traduciendo.</small></span><input type="checkbox" id="fallback"><i></i></label>
+      <label class="switch"><span>Usar el traductor gratuito si falla<small>Si la clave no es válida, se agota la cuota o el idioma no está disponible, sigue traduciendo.</small></span><input type="checkbox" id="fallback"><i></i></label>
     </section>
 
     <section class="card group">
@@ -167,7 +173,7 @@
       <li><h3>Inicia</h3><p>Pulsa <b>Iniciar traducción</b> o <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>T</kbd>. Se actualiza sola en cuanto cambia el texto. El mismo botón la finaliza.</p></li>
       <li><h3>Varios recuadros</h3><p>Con <b>+</b> añades hasta 6, cada uno con sus idiomas y modo. Selecciónalos con las pestañas numeradas.</p></li>
       <li><h3>Modo atravesable</h3><p>Actívalo en Ajustes o con <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>M</kbd> para seguir usando lo que hay debajo (pausar un vídeo, jugar). Para mover el recuadro, pasa el ratón por su pestaña.</p></li>
-      <li><h3>Traductor con clave propia</h3><p>En <b>Ajustes → Traductor</b> puedes usar <b>DeepL</b> o <b>Google Cloud</b> con tu clave (ambos tienen 500.000 caracteres gratis al mes). Evita el límite del servicio gratuito y DeepL suele sonar más natural. La clave se guarda cifrada en tu equipo.</p></li>
+      <li><h3>Traductor con clave propia</h3><p>Sin clave, la app usa Google gratis y, si Google la limita, MyMemory (unos 5.000 caracteres al día). En <b>Ajustes → Traductor</b> puedes usar <b>Microsoft</b> (2 millones de caracteres gratis al mes), <b>DeepL</b> o <b>Google Cloud</b> con tu clave: sin cortes, y DeepL suele sonar más natural. La clave se guarda cifrada en tu equipo.</p></li>
       <li><h3>Perfiles</h3><p>Guarda distribuciones de recuadros (p. ej. «Netflix», «Juego») y asígnales una app para que se activen solas.</p></li>
     </ol>
     <div class="card tips">
