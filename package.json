@@ -1,7 +1,7 @@
 {
   "name": "traductor-de-pantalla",
   "productName": "Traductor de Pantalla",
-  "version": "2.2.0",
+  "version": "2.2.1",
   "description": "Traducción en tiempo real del texto dentro de un recuadro transparente en pantalla",
   "main": "src/main/index.js",
   "scripts": {

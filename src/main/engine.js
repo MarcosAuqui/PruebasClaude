@@ -1,4 +1,5 @@
 const { changedBlocks } = require('../shared/imaging');
+const { guessLanguage } = require('./langguess');
 
 // Cada cuánto se mira si cambió la imagen (barato) y cuánto se espera como
 // máximo a que se estabilice antes de leerla igualmente (vídeo en movimiento).
@@ -10,6 +11,10 @@ const CHANGED = 2; // bloques de la huella que deben cambiar
 const MIN_GAP = { fast: 400, normal: 700, saver: 1500 };
 const SAME_TEXT = 0.85; // similitud a partir de la cual se considera el mismo texto (ruido del OCR)
 const OWN_TEXT = 0.55; // similitud con lo que pintamos → la captura nos ve a nosotros
+// Modo de respaldo (el sistema no oculta el recuadro de la captura): la capa
+// se oculta un instante para leer debajo, pero solo cada cierto tiempo
+const BLINK_EVERY = { fast: 800, normal: 1500, saver: 3000 };
+const lang2 = (c) => String(c || '').slice(0, 2).toLowerCase();
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const norm = (s) => s.toLowerCase().replace(/[\s\p{P}]+/gu, '');
@@ -62,6 +67,7 @@ class BoxRunner {
     this.lastTranslateAt = 0;
     this.calibrating = false;
     this.fallbackSent = false;
+    this.lastBlinkAt = 0;
     if (this.abort) this.abort.abort();
     this.abort = null;
   }
@@ -121,8 +127,13 @@ class BoxRunner {
     const settings = ctx.settings();
     const box = { ...bw.box };
 
-    const needHide = box.mode === 'inplace' && this.layerShowing && !ctx.exclusion.works;
-    if (needHide) await bw.hideLayer();
+    // Si la captura nos ve (sin exclusión) y la capa está pintada, leer ahora
+    // solo devolvería nuestra propia traducción: se lee únicamente cuando toca
+    // ocultar la capa, y como mucho cada BLINK_EVERY ms.
+    const blinkMode = box.mode === 'inplace' && this.layerShowing && !ctx.exclusion.works;
+    if (blinkMode && Date.now() - this.lastBlinkAt < BLINK_EVERY[settings.speed]) return;
+    const needHide = blinkMode;
+    if (needHide) { this.lastBlinkAt = Date.now(); await bw.hideLayer(); }
     let g;
     try {
       g = await ctx.capture.grab({
@@ -153,8 +164,7 @@ class BoxRunner {
     const due = now - this.lastOcrAt > MAX_WAIT[settings.speed];
     // En modo de respaldo se relee cada ~2 s aunque no cambie la imagen: así
     // se comprueba que ocultar la capa funciona y se detecta texto nuevo debajo
-    const recheck = !ctx.exclusion.works && this.layerShowing
-      && now - this.lastOcrAt > (this.calibrating ? 450 : 2000);
+    const recheck = needHide && (this.calibrating || now - this.lastOcrAt > 2000);
     if (!this.force && !recheck && !(changed && (stable || due))) return;
     this.force = false;
     this.lastOcrSig = g.sig;
@@ -179,21 +189,8 @@ class BoxRunner {
     // cuando el sistema no excluye el recuadro de la captura (o el fotograma
     // llega tarde). Nunca se traduce eso: se ignora este fotograma y se
     // refuerza el modo de respaldo (ocultar la capa al capturar).
-    if (this.layerShowing && this.isOwnText(r.text)) {
-      this.lastOcrSig = g.sig; // no volver a leer este mismo fotograma
-      this.calibrating = true; // se reajusta rápido hasta lograr una lectura limpia
-      if (ctx.exclusion.works) {
-        ctx.exclusion.works = false;
-      } else if ((ctx.exclusion.waitFrames || 2) < 6) {
-        ctx.exclusion.waitFrames = (ctx.exclusion.waitFrames || 2) + 1;
-      } else {
-        // Ni ocultando la capa se logra una captura limpia en este equipo:
-        // el subtítulo (fuera de la zona capturada) nunca se lee a sí mismo
-        bw.send('overlay:clear');
-        this.layerShowing = false;
-        if (!this.fallbackSent) ctx.emit('fallback-caption', { boxId: box.id });
-        this.fallbackSent = true;
-      }
+    if (this.layerShowing && this.isOwnRead(r.text, box.target)) {
+      this.ownReadDetected(g, box);
       return;
     }
 
@@ -236,7 +233,15 @@ class BoxRunner {
       colors: colors[i] || null,
     }));
     const translated = results.map((t) => t.translated).join('\n');
-    const inplace = box.mode === 'inplace' ? items.filter((it) => !it.same) : [];
+    // Segunda red: si con la capa pintada todo lo leído ya está en el idioma
+    // destino, es nuestra propia capa. Nunca se borra la traducción por esto.
+    if (this.layerShowing && box.mode === 'inplace' && items.every((it) => it.same)) {
+      this.ownReadDetected(g, box);
+      return;
+    }
+    // Tras pasar a subtítulo por falta de exclusión, no se vuelve a pintar
+    // encima aunque el cambio de modo aún no haya llegado
+    const inplace = box.mode === 'inplace' && !this.fallbackSent ? items.filter((it) => !it.same) : [];
     bw.send('overlay:render', { items: inplace, caption: box.mode === 'caption' ? translated : '' });
     this.layerShowing = inplace.length > 0;
     this.displayed = translated;
@@ -265,9 +270,37 @@ class BoxRunner {
     ctx.emit('box-status', { boxId: box.id, text: 'Traduciendo en vivo', level: 'live' });
   }
 
-  isOwnText(text) {
+  /**
+   * ¿Lo leído es nuestra propia traducción pintada? Por parecido con lo que
+   * pintamos o, aunque la lectura salga deformada, porque ya está en el idioma
+   * destino cuando el original no lo estaba.
+   */
+  isOwnRead(text, target) {
     if (similarity(text, this.lastText) >= OWN_TEXT) return false;
-    return this.recentOut.some((t) => similarity(text, t) > OWN_TEXT);
+    if (this.recentOut.some((t) => similarity(text, t) > OWN_TEXT)) return true;
+    const now = lang2(guessLanguage(text));
+    return now === lang2(target) && lang2(guessLanguage(this.lastText)) !== lang2(target);
+  }
+
+  /** La captura nos ve: nunca traducir eso; respaldo o paso a subtítulo. */
+  ownReadDetected(g, box) {
+    const { ctx, bw } = this;
+    this.lastOcrSig = g.sig; // no volver a leer este mismo fotograma
+    ctx.exclusion.works = false;
+    const canBlink = ctx.exclusion.acceptBlink && (ctx.exclusion.waitFrames || 2) < 6;
+    if (canBlink) {
+      // El usuario prefiere «Sobre el texto» aunque parpadee: se reajusta la espera
+      if (this.calibrating) ctx.exclusion.waitFrames = (ctx.exclusion.waitFrames || 2) + 1;
+      this.calibrating = true;
+      return;
+    }
+    // Sin exclusión, pintar sobre el texto obliga a parpadear: se pasa a
+    // Subtítulo (fuera de la zona capturada, nunca se lee a sí mismo)
+    bw.send('overlay:clear');
+    this.layerShowing = false;
+    if (!this.fallbackSent) ctx.emit('fallback-caption', { boxId: box.id });
+    this.fallbackSent = true;
+    this.force = true;
   }
 
   cached(text, target) {

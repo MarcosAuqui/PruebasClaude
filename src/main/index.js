@@ -43,7 +43,9 @@ const recentApps = [];
 const boxWins = new Map(); // boxId → BoxWindow
 const runners = new Map(); // boxId → BoxRunner
 const boxStatus = new Map(); // boxId → { text, level }
-const exclusion = { works: process.platform === 'win32' || process.platform === 'darwin', waitFrames: 2 };
+const exclusion = {
+  works: process.platform === 'win32' || process.platform === 'darwin', waitFrames: 2, acceptBlink: false,
+};
 
 const profile = () => cfg.profiles.find((p) => p.id === cfg.activeProfileId);
 const boxes = () => profile().boxes;
@@ -182,7 +184,7 @@ const engineCtx = {
       if (item) sendMain('history:added', item);
     } else if (type === 'fallback-caption') {
       updateBox(data.boxId, { mode: 'caption' });
-      sendMain('notice', 'Tu sistema no permite pintar la traducción sobre el texto sin que se lea a sí misma. Este recuadro pasó a modo Subtítulo.');
+      sendMain('notice', 'Tu sistema no deja ocultar el recuadro a la captura de pantalla, así que la traducción pintada encima se leía a sí misma. Para evitar el bucle, este recuadro pasó a «Subtítulo». Si eliges «Sobre el texto» otra vez, funcionará con un breve parpadeo cada 1,5 s.');
     } else if (type === 'box-status') {
       const prev = boxStatus.get(data.boxId);
       if (prev && prev.text === data.text) return;
@@ -461,7 +463,12 @@ function registerIpc() {
   ipcMain.handle('app:toggle', fromMain(() => { toggle(); return running; }));
   ipcMain.handle('box:add', fromMain(() => addBox()));
   ipcMain.handle('box:remove', fromMain((id) => removeBox(id)));
-  ipcMain.handle('box:update', fromMain((id, patch) => updateBox(id, patch || {})));
+  ipcMain.handle('box:update', fromMain((id, patch) => {
+    // Si el usuario vuelve a elegir «Sobre el texto» en un equipo que no oculta
+    // el recuadro de la captura, acepta el modo con parpadeo breve
+    if (patch && patch.mode === 'inplace' && !exclusion.works) exclusion.acceptBlink = true;
+    return updateBox(id, patch || {});
+  }));
   ipcMain.handle('boxes:toggle-visible', fromMain(() => setBoxesVisible(!boxesVisible)));
   ipcMain.handle('settings:update', fromMain((patch) => updateSettings(patch || {})));
   ipcMain.handle('profile:create', fromMain((name) => createProfile(name)));

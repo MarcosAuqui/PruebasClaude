@@ -19,22 +19,32 @@ const TRANSLATED = 'Hola mis amigos, bienvenidos a la transmisión en vivo';
 
 function sig(seed) { const s = new Uint8Array(576); for (let i = 0; i < 576; i++) s[i] = (seed * 37 + i * 11) % 256; return s; }
 
-function makeWorld({ excludes = false, lagFrames = 3, noisyOcr = false, rateLimitAfter = Infinity, real = false }) {
-  const world = { calls: 0, renders: 0, clears: 0, results: 0, layerOn: false, hidden: false, hiddenFrames: 0, frame: 0, errors: [] };
+function makeWorld({
+  excludes = false, lagFrames = 3, noisyOcr = false, rateLimitAfter = Infinity, real = false, garbled = false, acceptBlink = false,
+}) {
+  const world = {
+    calls: 0, renders: 0, clears: 0, results: 0, layerOn: false, hidden: false, hiddenFrames: 0, frame: 0, errors: [], hides: 0, flips: 0, fallbacks: 0,
+  };
   const bw = {
     alive: true,
     box: { id: 'b', name: '1', source: 'auto', target: 'es', mode: 'inplace', visible: true },
     captureRect: () => ({ x: 0, y: 0, width: 400, height: 100 }),
     send(ch, data) {
-      if (ch === 'overlay:render') { world.renders++; world.layerOn = data.items.length > 0; if (data.items[0]) world.shown = data.items[0].text; }
-      if (ch === 'overlay:clear') { world.clears++; world.layerOn = false; }
+      if (ch === 'overlay:render') {
+        world.renders++;
+        const on = data.items.length > 0;
+        if (on !== world.layerOn) world.flips++;
+        world.layerOn = on;
+        if (data.items[0]) world.shown = data.items[0].text;
+      }
+      if (ch === 'overlay:clear') { world.clears++; if (world.layerOn) world.flips++; world.layerOn = false; }
     },
     setStatus() {},
-    hideLayer: async () => { world.hidden = true; world.hiddenFrames = 0; },
+    hideLayer: async () => { world.hidden = true; world.hiddenFrames = 0; world.hides++; },
     showLayer() { world.hidden = false; },
   };
   const ctx = {
-    exclusion: { works: true },
+    exclusion: { works: true, acceptBlink },
     settings: () => ({ speed: 'fast', enhance: 'auto' }),
     capture: {
       async grab(req) {
@@ -52,6 +62,8 @@ function makeWorld({ excludes = false, lagFrames = 3, noisyOcr = false, rateLimi
     ocr: {
       async recognize(token) {
         let text = token === 'ES' ? (world.shown || TRANSLATED) : (world.original || ORIGINAL);
+        // Lectura deformada de nuestra propia capa (letra pequeña, otros colores)
+        if (token === 'ES' && garbled) text = 'Hoal mls arnigos, bienvenldos a l tansmision en viv';
         // OCR de vídeo en vivo: pequeñas variaciones entre fotogramas
         if (token.startsWith('EN') && token !== 'EN0') text = text.replace('live', ['live', 'Iive', 'live.', 'llve', 'live', 'liue', 'live'][+token[2]]);
         return { paragraphs: [{ text, bbox: { x0: 10, y0: 10, x1: 390, y1: 40 }, lineH: 30, lineCount: 1, conf: 90 }], conf: 90, medianLineH: 30, text };
@@ -60,11 +72,11 @@ function makeWorld({ excludes = false, lagFrames = 3, noisyOcr = false, rateLimi
     async translate(text) {
       world.calls++;
       if (world.calls > rateLimitAfter) { const e = new Error('demasiadas solicitudes, espera un momento'); e.status = 429; throw e; }
-      const isEs = /^(Hola|Ahora)/.test(text);
+      const isEs = /^(Hola|Ahora|Hoal)/.test(text);
       if (isEs) return { translated: text, detected: 'es' };
       return { translated: text.startsWith('Now') ? 'Ahora empieza el partido final' : TRANSLATED, detected: 'en' };
     },
-    emit(type, d) { if (type === 'result') world.results++; if (type === 'box-status' && d.level === 'error') world.errors.push(d.text); },
+    emit(type, d) { if (type === 'fallback-caption') { world.fallbacks++; if (world.realModeSwitch) bw.box.mode = 'caption'; } if (type === 'result') world.results++; if (type === 'box-status' && d.level === 'error') world.errors.push(d.text); },
   };
   if (real) ctx.translate = (...a) => { world.calls++; return realTranslator.translate(...a); };
   return { world, runner: new BoxRunner(bw, ctx), ctx };
@@ -118,7 +130,7 @@ test('espaciado y agrupación de peticiones del traductor', async () => {
 });
 
 test('sin exclusión de captura: sigue detectando el texto nuevo de debajo', async () => {
-  const w = makeWorld({ excludes: false, lagFrames: 3 });
+  const w = makeWorld({ excludes: false, lagFrames: 3, acceptBlink: true });
   w.runner.start();
   await new Promise((r) => setTimeout(r, 2500));
   w.world.original = 'Now the final match begins';
@@ -130,7 +142,7 @@ test('sin exclusión de captura: sigue detectando el texto nuevo de debajo', asy
 });
 
 test('sistema sin captura limpia posible: pasa a subtítulo en vez de insistir', async () => {
-  const w = makeWorld({ excludes: false, lagFrames: 99 });
+  const w = makeWorld({ excludes: false, lagFrames: 99, acceptBlink: true });
   let fallback = 0;
   const emit = w.ctx.emit;
   w.ctx.emit = (type, d) => { if (type === 'fallback-caption') fallback++; emit(type, d); };
@@ -140,4 +152,28 @@ test('sistema sin captura limpia posible: pasa a subtítulo en vez de insistir',
   console.log('   sin salida:', JSON.stringify({ solicitudes: w.world.calls, cambioASubtitulo: fallback }));
   assert.equal(fallback, 1, 'un solo aviso');
   assert.ok(w.world.calls <= 2, `solicitudes: ${w.world.calls}`);
+});
+
+test('TU CASO: lectura deformada de la propia capa → sin bucle inglés/español', async () => {
+  // Sin el cambio real de modo (defensa del motor) y con él (como en la app)
+  for (const realModeSwitch of [false, true]) {
+    const w = makeWorld({ excludes: false, lagFrames: 99, garbled: true });
+    w.world.realModeSwitch = realModeSwitch;
+    w.runner.start();
+    await new Promise((r) => setTimeout(r, 6000));
+    w.runner.stop();
+    const { world } = w;
+    console.log('   deformada' + (realModeSwitch ? ' (app real)' : ' (defensa)') + ':', JSON.stringify({ solicitudes: world.calls, alternancias: world.flips, ocultaciones: world.hides, aSubtitulo: world.fallbacks }));
+    assert.ok(world.flips <= 2, `la capa alterna ${world.flips} veces`);
+    assert.ok(world.calls <= 2, `solicitudes: ${world.calls}`);
+    assert.equal(world.fallbacks, 1, 'pasa a subtítulo y avisa una vez');
+    assert.ok(world.hides <= 1, `no parpadea: ${world.hides} ocultaciones`);
+  }
+});
+
+test('modo respaldo aceptado: la capa se oculta como mucho cada 0,8 s en «Rápida» (no en cada lectura)', async () => {
+  const { world } = await run({ excludes: false, lagFrames: 1, acceptBlink: true }, 7500);
+  console.log('   parpadeos:', JSON.stringify({ ocultaciones: world.hides, alternancias: world.flips }));
+  assert.ok(world.hides <= 10, `ocultaciones en 7,5 s: ${world.hides}`);
+  assert.ok(world.flips <= 2);
 });

@@ -49,6 +49,7 @@ class BoxWindow {
     this.win.webContents.on('did-finish-load', () => this.pushState());
     this.win.once('ready-to-show', () => {
       if (this.box.visible && this.isShown()) this.win.showInactive();
+      this.win.setContentProtection(true); // se aplica de nuevo ya visible
       this.applyClickThrough(this.clickThrough);
     });
   }
@@ -128,7 +129,7 @@ class BoxWindow {
   setVisible(v) {
     if (!this.alive) return;
     v = v && this.isShown();
-    if (v && !this.win.isVisible()) this.win.showInactive();
+    if (v && !this.win.isVisible()) { this.win.showInactive(); this.win.setContentProtection(true); }
     if (!v && this.win.isVisible()) this.win.hide();
   }
 
